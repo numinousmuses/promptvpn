@@ -311,3 +311,14 @@ fn error_envelope_shape() {
     assert_eq!(v["error"]["retryable"], false);
     assert!(v["error"]["approval_id"].is_null());
 }
+
+#[test]
+fn local_private_handling_resolves_without_tee_consent() {
+    let mut c = ctx(DestinationTier::ExternalUnverified);
+    c.fallback = FallbackSettings { mode: FallbackMode::TeePrivateRoute, tee_consent: false, local_private_handling: true, uncertain_threshold: 0.5 };
+    let d = evaluate(&defaults(), &[finding(UNCERTAIN, 0.6)], &c);
+    assert_eq!(d.disposition, Disposition::PrivateRoute);
+    c.fallback.mode = FallbackMode::BlockAndReview;
+    let d = evaluate(&defaults(), &[finding(UNCERTAIN, 0.6)], &c);
+    assert_eq!(d.disposition, Disposition::RequireApproval);
+}

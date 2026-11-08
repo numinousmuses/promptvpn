@@ -564,9 +564,12 @@ fn decide_finding(set: &PolicySet, f: &Finding, ctx: &EvalContext) -> FindingDec
     }
 }
 
+/// Private routing needs either informed TEE consent (data leaves the device to
+/// a verified enclave) or explicit local-only handling (data stays on device).
+/// Block-and-review always queues.
 pub fn resolve_fallback(s: &FallbackSettings) -> Action {
     match s.mode {
-        FallbackMode::TeePrivateRoute if s.tee_consent => Action::PrivateRoute,
+        FallbackMode::TeePrivateRoute if s.tee_consent || s.local_private_handling => Action::PrivateRoute,
         _ => Action::RequireApproval,
     }
 }
