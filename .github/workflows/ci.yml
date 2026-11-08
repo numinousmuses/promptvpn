@@ -1,0 +1,35 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-13, ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Secret Service for keyring tests (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+      - name: Dashboard
+        working-directory: apps/dashboard
+        run: npm ci && npm run gen:types && git diff --exit-code src/generated && npx tsc --noEmit && npm run build
+      - name: Schemas are current
+        run: cargo run -q -p pv-cli -- schema --out schemas && git diff --exit-code schemas
+      - name: Rust tests
+        run: cargo test --workspace --locked
+      - name: Skill adapters are current
+        run: python3 -I scripts/gen_skill_adapters.py . && git diff --exit-code skills
+      - name: Skill script tests
+        run: cargo build -p pv-cli && sh skills/promptvpn-setup/tests/run.sh </dev/null
+      - name: Deterministic evaluation (privacy gate)
+        run: |
+          cargo run -q -p pv-cli -- eval --configs deterministic --out eval.json
+          python3 -I -c "import json; r=json.load(open('eval.json'))[0]; print(r['critical_escapes'], r['false_block_rate']); assert r['critical_escapes'] <= 1 and r['false_block_rate'] == 0"
