@@ -1844,8 +1844,6 @@ dependencies = [
 [[package]]
 name = "gline-rs"
 version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "187d55c624cd5eb969cb84ef25e0e394368bb276905abd7dc136105770a16bad"
 dependencies = [
  "composable",
  "csv",
