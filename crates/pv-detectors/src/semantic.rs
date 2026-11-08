@@ -195,10 +195,40 @@ pub fn strip_think(s: &str) -> &str {
     }
 }
 
+/// Recover fields from malformed JSON (some runners, e.g. Ollama's MLX backend,
+/// do not enforce the schema). Recovery can only add findings; if nothing
+/// recognizable is present the caller fails closed.
+fn recover_lfm(body: &str) -> Option<LfmOut> {
+    static ID: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r#""concept_id"\s*:\s*"([^"]{1,80})""#).unwrap());
+    static CONF: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r#""confidence"\s*:\s*([0-9.]+)"#).unwrap());
+    static EV: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r#""evidence"\s*:\s*"((?:[^"\\]|\\.){0,400})""#).unwrap());
+    static OTHER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r#""other_sensitive_personal_data"\s*:\s*(true|false)"#).unwrap());
+    static INJ: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r#""injection_attempt"\s*:\s*(true|false)"#).unwrap());
+    if !body.contains("\"matches\"") {
+        return None;
+    }
+    let ids: Vec<regex::Match> = ID.find_iter(body).collect();
+    let mut matches = Vec::new();
+    for (i, m) in ids.iter().enumerate() {
+        let end = ids.get(i + 1).map(|n| n.start()).unwrap_or(body.len());
+        let chunk = &body[m.start()..end];
+        let id = ID.captures(chunk).map(|c| c[1].to_string()).unwrap_or_default();
+        let confidence = CONF.captures(chunk).and_then(|c| c[1].parse::<f32>().ok()).unwrap_or(0.7);
+        let evidence = EV.captures(chunk).map(|c| c[1].replace("\\\"", "\"")).unwrap_or_default();
+        matches.push(LfmMatch { concept_id: id, confidence, evidence, isolatable: false });
+    }
+    let other = OTHER.captures(body).map(|c| &c[1] == "true").unwrap_or(false);
+    let inj = INJ.captures(body).map(|c| &c[1] == "true").unwrap_or(false);
+    Some(LfmOut { matches, other_sensitive_personal_data: other, injection_attempt: inj })
+}
+
 /// Parse LFM output into findings. Exposed for tests.
 pub fn parse_lfm(raw: &str, segments: &[Segment<'_>], concepts: &[Concept], model: &str) -> Result<(Vec<Finding>, bool), ClassifierError> {
     let body = strip_think(raw);
-    let out: LfmOut = serde_json::from_str(body).map_err(|e| ClassifierError::InvalidOutput(e.to_string()))?;
+    let out: LfmOut = match serde_json::from_str(body) {
+        Ok(o) => o,
+        Err(e) => recover_lfm(body).ok_or_else(|| ClassifierError::InvalidOutput(e.to_string()))?,
+    };
     let mut findings = Vec::new();
     for m in out.matches.into_iter().take(32) {
         if !concepts.iter().any(|c| c.id == m.concept_id) {
@@ -393,6 +423,17 @@ mod tests {
         assert!(inj);
         assert!(f[0].whole_field);
         assert!(f.iter().any(|f| f.category == UNCERTAIN));
+    }
+
+    #[test]
+    fn lfm_recovers_malformed_runner_output() {
+        let segs = [Segment { field_index: 0, text: "Our unannounced Orion-7 accelerator hits 3.2 PFLOPS" }];
+        // Real output from Ollama's MLX runner, which ignores the JSON schema.
+        let raw = "{\n  \"matches\": [\n    {\n      \"concept_id\": \"accel\",\n      \"confidence\": 0.95,\n      \"evidence\": \"Orion-7 accelerator, 3.2 PFLOPS\"\n    \n    \t\n  ,\n  \"isolatable\": true\n}  \n  ]";
+        let (f, _) = parse_lfm(raw, &segs, &concepts(), "lfm3").unwrap();
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].category, "CONCEPT:accel");
+        assert!(f[0].whole_field, "recovered matches are never treated as isolated spans");
     }
 
     #[test]

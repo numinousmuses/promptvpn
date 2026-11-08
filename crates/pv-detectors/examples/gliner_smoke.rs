@@ -7,6 +7,8 @@ fn main() {
         "Please update the account for Maria Gonzalez (SSN 123-45-6789) and email maria.g@example.com, phone 415-555-0134.",
         "Patient John Smith was diagnosed with type 2 diabetes and prescribed metformin. He lives at 42 Oak Street, Springfield.",
         "The quarterly revenue grew 12% at Acme Corp.",
+        "What is the capital of France?",
+        "Our unannounced Orion-7 accelerator hits 3.2 PFLOPS FP8 with 192GB HBM4, tape-out is March 2027. Summarize for the board.",
     ] {
         let t0 = std::time::Instant::now();
         let f = m.detect(t).expect("detect");

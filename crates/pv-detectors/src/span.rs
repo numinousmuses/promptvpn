@@ -68,6 +68,25 @@ pub fn locate_entity(text: &str, entity: &str, hint_byte: usize) -> Option<(usiz
     best
 }
 
+/// Shape checks applied to span-model output. GLiNER is good at context but
+/// labels product names and countries as IDs/addresses; critical categories
+/// block requests, so their spans must look like the thing they claim to be.
+pub fn plausible(category: &str, text: &str) -> bool {
+    let digits = text.chars().filter(|c| c.is_ascii_digit()).count();
+    let letters = text.chars().filter(|c| c.is_alphabetic()).count();
+    match category {
+        ADDRESS => digits >= 1 && text.split_whitespace().count() >= 2,
+        DRIVER_LICENSE | PASSPORT | GOVERNMENT_ID | FINANCIAL_ACCOUNT | PAYMENT_CARD => digits >= 5,
+        PHONE => digits >= 7,
+        EMAIL => text.contains('@'),
+        DOB => digits >= 2,
+        AUTH_SECRET => text.chars().count() >= 8 && !text.contains(char::is_whitespace),
+        HEALTH_INFORMATION => letters >= 4 && !text.contains('%') && !(text.len() <= 5 && text.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())),
+        PERSON => letters >= 2 && text.chars().next().is_some_and(|c| c.is_uppercase()),
+        _ => true,
+    }
+}
+
 pub fn make_finding(category: &str, s: usize, e: usize, prob: f32, version: &str) -> Finding {
     let mut f = Finding::new(ClassifierType::Builtin, category, s, e, prob.clamp(0.0, 1.0), "gliner-pii-edge", "span-model", sensitivity_of(category));
     f.classifier_version = version.into();
@@ -138,6 +157,9 @@ pub mod gliner_impl {
                         let Some(cat) = label_to_category(s.class()) else { continue };
                         let (cs, _ce) = s.offsets();
                         let hint = char_to_byte(chunk, cs, cs).map(|(b, _)| b).unwrap_or(0);
+                        if !plausible(cat, s.text()) {
+                            continue;
+                        }
                         if let Some((a, b)) = locate_entity(chunk, s.text(), hint) {
                             out.push(make_finding(cat, base + a, base + b, s.probability(), &self.version));
                         }
@@ -152,6 +174,20 @@ pub mod gliner_impl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn plausibility_filters_known_false_positives() {
+        assert!(!plausible(ADDRESS, "France"));
+        assert!(!plausible(ADDRESS, "Springfield"));
+        assert!(plausible(ADDRESS, "42 Oak Street"));
+        assert!(!plausible(DRIVER_LICENSE, "Orion-7"));
+        assert!(plausible(DRIVER_LICENSE, "D1234567"));
+        assert!(!plausible(AUTH_SECRET, "HBM4"));
+        assert!(!plausible(HEALTH_INFORMATION, "FP8"));
+        assert!(!plausible(HEALTH_INFORMATION, "12%"));
+        assert!(plausible(HEALTH_INFORMATION, "type 2 diabetes"));
+        assert!(plausible(PERSON, "Maria Gonzalez"));
+    }
+
     #[test]
     fn mapping_and_locate() {
         assert_eq!(label_to_category("ssn"), Some(GOVERNMENT_ID));

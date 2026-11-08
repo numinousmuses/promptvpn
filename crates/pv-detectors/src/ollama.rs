@@ -204,7 +204,7 @@ impl Ollama {
     pub async fn chat_structured(&self, model: &str, messages: Value, schema: Value, timeout: Duration) -> Result<(String, GenStats), OllamaError> {
         let body = json!({
             "model": model, "messages": messages, "format": schema, "stream": false, "think": false, "keep_alive": "30m",
-            "options": { "temperature": 0, "num_predict": 512 }
+            "options": { "temperature": 0, "num_predict": 256 }
         });
         let v = self.post_json("/api/chat", &body, timeout).await?;
         Ok((v["message"]["content"].as_str().unwrap_or_default().to_string(), GenStats::from(&v)))

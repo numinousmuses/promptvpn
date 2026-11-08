@@ -29,3 +29,7 @@ thiserror.workspace = true
 uuid.workspace = true
 gline-rs = { version = "1.1", optional = true }
 orp = { version = "1", optional = true }
+
+[[example]]
+name = "gliner_smoke"
+required-features = ["gliner"]
