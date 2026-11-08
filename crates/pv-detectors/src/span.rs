@@ -80,7 +80,7 @@ pub fn plausible(category: &str, text: &str) -> bool {
         PHONE => digits >= 7,
         EMAIL => text.contains('@'),
         DOB => digits >= 2,
-        AUTH_SECRET => text.chars().count() >= 8 && !text.contains(char::is_whitespace),
+        AUTH_SECRET => text.chars().count() >= 8 && !text.contains(char::is_whitespace) && digits >= 1 && letters >= 1,
         HEALTH_INFORMATION => letters >= 4 && !text.contains('%') && !(text.len() <= 5 && text.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())),
         PERSON => letters >= 2 && text.chars().next().is_some_and(|c| c.is_uppercase()),
         _ => true,
@@ -182,6 +182,8 @@ mod tests {
         assert!(!plausible(DRIVER_LICENSE, "Orion-7"));
         assert!(plausible(DRIVER_LICENSE, "D1234567"));
         assert!(!plausible(AUTH_SECRET, "HBM4"));
+        assert!(!plausible(AUTH_SECRET, "OPENAI_API_KEY"));
+        assert!(plausible(AUTH_SECRET, "Tr0ub4dor&3"));
         assert!(!plausible(HEALTH_INFORMATION, "FP8"));
         assert!(!plausible(HEALTH_INFORMATION, "12%"));
         assert!(plausible(HEALTH_INFORMATION, "type 2 diabetes"));

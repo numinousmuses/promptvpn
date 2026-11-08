@@ -41,7 +41,10 @@ lazy_re!(NPM_RE, r"\bnpm_[A-Za-z0-9]{36}\b");
 lazy_re!(SENDGRID_RE, r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}");
 lazy_re!(TWILIO_RE, r"\bSK[0-9a-f]{32}\b");
 lazy_re!(NEAR_KEY_RE, r"\bed25519:[1-9A-HJ-NP-Za-km-z]{60,90}\b");
-lazy_re!(GENERIC_KEY_RE, r#"(?i)\b(?:api[_\-]?key|apikey|access[_\-]?token|secret[_\-]?key|client[_\-]?secret|auth[_\-]?token|private[_\-]?token|x-api-key)\b["']?\s*[:=]\s*["']?([A-Za-z0-9_\-./+=]{16,})"#);
+lazy_re!(GENERIC_KEY_RE, r#"(?i)\b[a-z0-9_.\-]*(?:api[_\-]?key|apikey|access[_\-]?token|auth[_\-]?token|private[_\-]?token|x-api-key|_key|_token|secret|credentials?)\b["']?\s*[:=]\s*["']?([A-Za-z0-9_\-./+=]{16,})"#);
+lazy_re!(SSN_DOT_RE, r"\b(\d{3})\.(\d{2})\.(\d{4})\b");
+lazy_re!(PASSWORD_LATE_RE, r#"(?i)\bpass(?:word|phrase)\b[^\n:=]{1,40}[:=]\s*["']?([^\s"',;]{6,64})"#);
+lazy_re!(OBFUSCATED_EMAIL_RE, r"(?i)\b[a-z0-9._\-]+(?:\s+dot\s+[a-z0-9_\-]+)*\s+(?:at|\[at\]|\(at\))\s+[a-z0-9\-]+(?:\s+dot\s+[a-z0-9\-]+)+\b");
 lazy_re!(PEM_RE, r"-----BEGIN ((?:[A-Z0-9]+ )*)PRIVATE KEY(?: BLOCK)?-----(?s:.*?)(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|\z)");
 lazy_re!(HEX_KEY_RE, r"(?i)\b(?:private[_ \-]?key|priv[_ \-]?key|secret[_ \-]?key|signing[_ \-]?key)\b\W{0,6}((?:0x)?[0-9a-f]{64})\b");
 lazy_re!(PASSWORD_RE, r#"(?i)\b(?:pass(?:word|wd|phrase)?|pwd)\b["']?\s*(?:[:=]|\s+is\s+)\s*["']?([^\s"',;]{4,128})"#);
@@ -54,7 +57,7 @@ lazy_re!(ADDRESS_RE, r"\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][a-z]+\.?\s+){1,4}(?
 lazy_re!(PERSON_CUE_RE, r"(?:(?i:my name is|name\s*:|full name\s*:|dear|patient\s*:?|customer\s*:?|employee\s*:?|contact\s*:|signed,|regards,)|\b(?:Mr|Mrs|Ms|Dr|Prof)\.?)\s+([A-Z][a-z]+(?:[ \-][A-Z][a-z'\-]+){0,2})");
 lazy_re!(DATE_RE, r"(?i)\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+\d{4})\b");
 lazy_re!(DOB_CUE_RE, r"(?i)\b(?:dob|d\.o\.b\.?|date of birth|birth ?date|birthday|born(?: on)?)\b");
-lazy_re!(PASSPORT_CUE_RE, r"(?i)\bpassport(?:\s*(?:no|number|num|#))?\.?");
+lazy_re!(PASSPORT_CUE_RE, r"(?i)\b(?:passport|travel\s+doc(?:ument)?)(?:\s*(?:no|number|num|#))?\.?");
 lazy_re!(PASSPORT_VAL_RE, r"\b[A-Z0-9]{6,9}\b");
 lazy_re!(DL_CUE_RE, r"(?i)\b(?:driver'?s?\s+licen[cs]e(?:\s*(?:no|number|#))?|DL\s*(?:#|no\.?|number)|licen[cs]e\s+(?:no|number|#))\.?");
 lazy_re!(DL_VAL_RE, r"\b[A-Z]{0,3}[\- ]?\d{4,12}\b");
@@ -64,7 +67,7 @@ lazy_re!(SSN_CUE_RE, r"(?i)\b(?:ssn|social security|soc\.? sec|tax id|tin|itin|e
 lazy_re!(CARD_CUE_RE, r"(?i)\b(?:card|visa|mastercard|amex|discover|cc|credit|debit|cvv|pan)\b");
 lazy_re!(PHONE_CUE_RE, r"(?i)\b(?:phone|tel|mobile|cell|call|fax|whatsapp|sms|text me)\b");
 lazy_re!(HEALTH_RE, r"(?i)\b(?:diagnosed with|diagnosis\s*:|diagnosis of|prescribed|suffers from|tested positive for|positive for|treatment for|medical history of|history of|on medication)\s+([^.\n;]{3,80})");
-lazy_re!(HEALTH_TERM_RE, r"(?i)\b(?:HIV|AIDS|hepatitis [ABC]|chemotherapy|schizophrenia|bipolar disorder|major depressive disorder|type [12] diabetes|cancer|tuberculosis|pregnan(?:t|cy)|insulin|antidepressants?|opioid use disorder)\b");
+lazy_re!(HEALTH_TERM_RE, r"(?i)\b(?:HIV|AIDS|hepatitis [ABC]|chemo(?:therapy)?|schizophrenia|bipolar disorder|major depressive disorder|type [12] diabetes|cancer|tuberculosis|pregnan(?:t|cy)|insulin|antidepressants?|opioid use disorder)\b");
 lazy_re!(MRN_RE, r"(?i)\b(?:MRN|medical record (?:no|number|#))\s*[:#]?\s*([A-Z0-9\-]{6,14})\b");
 lazy_re!(HEALTH_PERSON_CUE_RE, r"(?i)\b(?:patient|my|his|her|their|he|she|i)\b");
 
@@ -217,6 +220,12 @@ pub fn detect(text: &str) -> Vec<Finding> {
             o.push(GOVERNMENT_ID, m.start(), m.end(), if ctx { 0.9 } else { 0.72 }, "ssn-us-v1", "pattern-invalid-ranges");
         }
     }
+    for c in SSN_DOT_RE.captures_iter(text) {
+        let m = c.get(0).unwrap();
+        if SSN_CUE_RE.is_match(before(text, m.start(), 40)) {
+            o.push(GOVERNMENT_ID, m.start(), m.end(), if ssn_valid(&c[1], &c[2], &c[3]) { 0.95 } else { 0.85 }, "ssn-us-dotted-v1", "pattern+context");
+        }
+    }
     for m in NINE_DIGITS_RE.find_iter(text) {
         let pre = before(text, m.start(), 40);
         if SSN_CUE_RE.is_match(pre) {
@@ -293,10 +302,15 @@ pub fn detect(text: &str) -> Vec<Finding> {
     for c in GENERIC_KEY_RE.captures_iter(text) {
         let g = c.get(1).unwrap();
         let v = g.as_str();
-        if looks_placeholder(v) || entropy(v) < 3.0 {
+        if looks_placeholder(v) || entropy(v) < 3.3 || !v.chars().any(|c| c.is_ascii_digit()) {
             continue;
         }
-        o.push(API_KEY, g.start(), g.end(), 0.85, "generic-keyed-secret-v1", "keyword+entropy");
+        let name = c.get(0).unwrap().as_str().to_ascii_lowercase();
+        let cat = if name.contains("secret") || name.contains("credential") { AUTH_SECRET } else { API_KEY };
+        o.push(cat, g.start(), g.end(), 0.85, "generic-keyed-secret-v2", "keyword+entropy");
+    }
+    for m in OBFUSCATED_EMAIL_RE.find_iter(text) {
+        o.push(EMAIL, m.start(), m.end(), 0.75, "email-obfuscated-v1", "pattern");
     }
     for c in PEM_RE.captures_iter(text) {
         let m = c.get(0).unwrap();
@@ -313,6 +327,15 @@ pub fn detect(text: &str) -> Vec<Finding> {
             continue;
         }
         o.push(AUTH_SECRET, g.start(), g.end(), 0.88, "password-assignment-v1", "keyword");
+    }
+    for c in PASSWORD_LATE_RE.captures_iter(text) {
+        let g = c.get(1).unwrap();
+        let v = g.as_str();
+        let mixed = v.chars().any(|c| c.is_ascii_digit()) && v.chars().any(|c| c.is_alphabetic());
+        if looks_placeholder(v) || !mixed {
+            continue;
+        }
+        o.push(AUTH_SECRET, g.start(), g.end(), 0.8, "password-late-v1", "keyword");
     }
     for c in BEARER_RE.captures_iter(text) {
         let g = c.get(1).unwrap();
@@ -500,6 +523,19 @@ mod tests {
         assert_eq!(span("Hi, my name is Jane Doe and", PERSON), "Jane Doe");
         assert!(has("The patient was diagnosed with type 2 diabetes last year", HEALTH_INFORMATION));
         assert!(!has("Diabetes research funding rose 10%", HEALTH_INFORMATION));
+    }
+
+    #[test]
+    fn broadened_patterns() {
+        assert!(has("Her SSN is 219.09.9999 per the form.", GOVERNMENT_ID));
+        assert!(!has("version 219.09.9999 released", GOVERNMENT_ID));
+        assert_eq!(span("AZURE_OPENAI_KEY=4f9c2b7e1a8d4c3f9e6b5a7d2c1e8f90", API_KEY), "4f9c2b7e1a8d4c3f9e6b5a7d2c1e8f90");
+        assert_eq!(span("{\"secret\": \"Zq8vT3xLp0Wm9Rk2Ys7N\"}", AUTH_SECRET), "Zq8vT3xLp0Wm9Rk2Ys7N");
+        assert!(!has("\"max_tokens\": 4096, \"page_token\": \"next\"", API_KEY));
+        assert_eq!(span("my password is the same as before: Tr0ub4dor&3", AUTH_SECRET), "Tr0ub4dor&3");
+        assert!(has("Travel doc 548927615 (USA)", PASSPORT));
+        assert!(has("write to jane dot roe at example dot com", EMAIL));
+        assert!(!has("look at the dog", EMAIL));
     }
 
     #[test]
