@@ -7,6 +7,7 @@
 //! * `mock-leak`: reply contains a synthetic SSN and API key (output inspection)
 //! * `mock-tool`: reply with a tool call whose arguments echo the input
 //! * `mock-fail-<code>`: respond with that HTTP status
+//! * `mock-badsse`: (streaming) an oversized, unterminated SSE event
 
 use axum::body::Bytes;
 use axum::extract::State;
@@ -20,6 +21,8 @@ use std::sync::{Arc, Mutex};
 #[derive(Default)]
 pub struct Recorded {
     pub bodies: Mutex<Vec<Vec<u8>>>,
+    /// Authorization header of each request (None when absent).
+    pub auth: Mutex<Vec<Option<String>>>,
     pub file: Option<std::path::PathBuf>,
 }
 
@@ -73,12 +76,16 @@ fn chunks(s: &str, n: usize) -> Vec<String> {
     chars.chunks(n).map(|c| c.iter().collect()).collect()
 }
 
-async fn chat(State(rec): State<Arc<Recorded>>, body: Bytes) -> Response {
+async fn chat(State(rec): State<Arc<Recorded>>, headers: axum::http::HeaderMap, body: Bytes) -> Response {
     record(&rec, &body);
+    rec.auth.lock().unwrap().push(headers.get("authorization").and_then(|v| v.to_str().ok()).map(String::from));
     let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
     let model = v["model"].as_str().unwrap_or("mock-echo").to_string();
     if let Some(code) = model.strip_prefix("mock-fail-").and_then(|c| c.parse::<u16>().ok()) {
         return (StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), Json(json!({"error": {"message": "mock failure"}}))).into_response();
+    }
+    if model == "mock-badsse" && v["stream"].as_bool() == Some(true) {
+        return ([("content-type", "text/event-stream")], format!("data: {{\"choices\": [{{\"delta\": {{\"content\": \"x\"}}}}]}}\n\ndata: {}\n", "y".repeat(2 << 20))).into_response();
     }
     let text = reply_text(&model, &v);
     let tool = model == "mock-tool";
@@ -110,8 +117,9 @@ async fn chat(State(rec): State<Arc<Recorded>>, body: Bytes) -> Response {
     Json(json!({"id": "chatcmpl-mock", "object": "chat.completion", "created": 1, "model": model, "choices": [{"index": 0, "message": message, "finish_reason": if tool {"tool_calls"} else {"stop"}}], "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10}})).into_response()
 }
 
-async fn responses(State(rec): State<Arc<Recorded>>, body: Bytes) -> Response {
+async fn responses(State(rec): State<Arc<Recorded>>, headers: axum::http::HeaderMap, body: Bytes) -> Response {
     record(&rec, &body);
+    rec.auth.lock().unwrap().push(headers.get("authorization").and_then(|v| v.to_str().ok()).map(String::from));
     let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
     let model = v["model"].as_str().unwrap_or("mock-echo").to_string();
     if let Some(code) = model.strip_prefix("mock-fail-").and_then(|c| c.parse::<u16>().ok()) {
