@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "generated": "2026-11-08",
+  "note": "Pinned local classifier artifacts. Weights are downloaded at install time and verified against these hashes; none are committed. Accuracy is measured by `promptvpn eval`, see docs/evaluation.md.",
+  "span": {
+    "gliner-pii-edge": {
+      "purpose": "Span-level PII recognition through the embedded ONNX runtime (not Ollama)",
+      "source": "https://huggingface.co/knowledgator/gliner-pii-edge-v1.0",
+      "revision": "9b7f39b0a2da971a5beea78d35f1539d4009c891",
+      "license": "apache-2.0",
+      "runtime": "onnxruntime 1.20 via gline-rs 1.1.0 (vendored, patched for ModernBERT); token-level mode",
+      "threshold": 0.5,
+      "files": {
+        "tokenizer.json": {
+          "path": "tokenizer.json",
+          "size": 3583593,
+          "sha256": "84b3a9b18f04a0ccd03b72d9f871b7e0bec40fd7021ef50bc30a7c3693c11205"
+        },
+        "model.onnx": {
+          "path": "onnx/model_quint8.onnx",
+          "size": 45820894,
+          "sha256": "988acb03456b26e2d9f2521016d820310c2ed64deb4a846297d3289f0c2eb7e4"
+        },
+        "gliner_config.json": {
+          "path": "gliner_config.json",
+          "size": 4316,
+          "sha256": "77e6b57335c4bfd461e9041682196dd6c373a0b09bbd9269ef9e95b807915340"
+        }
+      }
+    }
+  },
+  "generative": {
+    "qwen3guard": {
+      "display_name": "Qwen3Guard-Gen-0.6B",
+      "purpose": "Generative guard classifier (prompt moderation, PII category, owner concepts as extra categories)",
+      "upstream": "https://huggingface.co/Qwen/Qwen3Guard-Gen-0.6B",
+      "upstream_revision": "fada3b2f655b89601929198343c94cd2f64d93cc",
+      "license": "apache-2.0",
+      "ollama_pull": "hf.co/mradermacher/Qwen3Guard-Gen-0.6B-GGUF:Q8_0",
+      "gguf_source": "https://huggingface.co/mradermacher/Qwen3Guard-Gen-0.6B-GGUF",
+      "gguf_revision": "2a59799e089fba3807d534a89c6b95bdf38ee76a",
+      "weights_sha256": [
+        "127e8833aa16c6839613cd08df5409440302e8c61e90617914b3100f2141411a"
+      ],
+      "invocation": "raw /api/generate with the model's official prompt-moderation template built by Prompt VPN; temperature 0",
+      "notes": "No official Ollama package exists. Ordinary qwen3:0.6b is NOT a substitute; identity is checked by weight blob sha256.",
+      "manifest_digests": {}
+    },
+    "lfm3": {
+      "display_name": "LFM3-1.7B",
+      "purpose": "Semantic concept classifier with JSON-schema constrained output",
+      "upstream": "https://huggingface.co/LiquidAI/LFM3-1.7B",
+      "upstream_revision": "0dc4268b561499c648c7ba7c9466bf3d8d01517a",
+      "license": "LFM Open License v1.0 (commercial use licensed only below USD 10M annual revenue)",
+      "ollama_pull": "lfm3:1.7b",
+      "gguf_source": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF",
+      "gguf_revision": "cd0c74c575b5c416f3011b5b4c298077f26ca8c2",
+      "weights_sha256": [
+        "3793e1e6e2266919d6e015287221b41100175a98eddaba92e111aed3b05c93c4"
+      ],
+      "min_ollama": "0.40.12",
+      "invocation": "/api/chat with format=<JSON schema>, think=false, temperature 0",
+      "manifest_digests": {
+        "macos-arm64 (MLX nvfp4, via manifest list sha256:df5fd9016d22...)": "f609fc0ab12a126dbb26d8ff621a4de89e4b25661ccc9b0a9110c018a7f3f2d4"
+      },
+      "notes": "lfm3:1.7b is a multi-platform manifest list: Apple Silicon resolves to an MLX nvfp4 safetensors build (identity = pinned platform manifest digest from /api/tags); other platforms resolve to the GGUF Q4_K_M (identity = pinned weight blob sha256). The explicit GGUF tag lfm3:1.7b-q4_K_M needs Ollama newer than 0.40.12."
+    }
+  }
+}

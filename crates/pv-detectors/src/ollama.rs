@@ -171,14 +171,25 @@ impl Ollama {
         Err(OllamaError::Identity("no weight blob in modelfile".into()))
     }
 
-    /// Verify that an installed model's weight blob matches one of the pinned digests.
-    pub async fn verify_identity(&self, name: &str, allowed_sha256: &[String]) -> Result<String, OllamaError> {
-        let d = self.weight_digest(name).await?;
-        if allowed_sha256.iter().any(|a| a.eq_ignore_ascii_case(&d)) {
-            Ok(d)
-        } else {
-            Err(OllamaError::Identity(format!("{name} weights sha256 {d} not in models.lock.json")))
+    /// Manifest digest reported by /api/tags for an installed model.
+    pub async fn manifest_digest(&self, name: &str) -> Result<String, OllamaError> {
+        let want = if name.contains(':') { name.to_string() } else { format!("{name}:latest") };
+        self.tags().await?.into_iter().find(|t| t.name == want || t.name == name).map(|t| t.digest).ok_or_else(|| OllamaError::Identity(format!("{name} not installed")))
+    }
+
+    /// Verify identity: the GGUF weight blob sha256 or the platform manifest
+    /// digest must match a value pinned in models.lock.json.
+    pub async fn verify_identity(&self, name: &str, allowed_weights: &[String], allowed_manifests: &[String]) -> Result<String, OllamaError> {
+        if let Ok(d) = self.weight_digest(name).await {
+            if allowed_weights.iter().any(|a| a.eq_ignore_ascii_case(&d)) {
+                return Ok(format!("weights:sha256:{d}"));
+            }
         }
+        let m = self.manifest_digest(name).await?;
+        if allowed_manifests.iter().any(|a| a.eq_ignore_ascii_case(&m)) {
+            return Ok(format!("manifest:sha256:{m}"));
+        }
+        Err(OllamaError::Identity(format!("{name} (manifest {m}) does not match any digest pinned in models.lock.json")))
     }
 
     pub async fn generate_raw(&self, model: &str, prompt: &str, num_predict: u32, timeout: Duration) -> Result<(String, GenStats), OllamaError> {
