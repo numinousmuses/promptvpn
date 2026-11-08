@@ -2038,6 +2038,15 @@ version = "0.1.0"
 [[package]]
 name = "pv-transform"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "pv-audit",
+ "pv-core",
+ "pv-vault",
+ "regex",
+ "thiserror",
+ "zeroize",
+]
 
 [[package]]
 name = "pv-vault"
