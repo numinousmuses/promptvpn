@@ -394,7 +394,7 @@ fn default_kind() -> ExactKind {
     ExactKind::Value
 }
 fn default_norm() -> NormOpts {
-    NormOpts { unicode: true, casefold: false, whitespace: true, separators: false }
+    NormOpts { unicode: true, casefold: true, whitespace: true, separators: false }
 }
 fn default_block() -> Action {
     Action::Block

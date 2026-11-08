@@ -40,4 +40,5 @@ keyring.workspace = true
 subtle = "2"
 
 [dev-dependencies]
+base64.workspace = true
 tempfile.workspace = true
