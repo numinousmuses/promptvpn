@@ -1061,10 +1061,13 @@ async fn clients(paths: &Paths, port: u16, cmd: ClientCmd) -> Result<()> {
             if !yes && !confirm("Proceed?") {
                 bail!("aborted; nothing changed");
             }
-            let rec = client::configure(c, &h, &paths.backups(), &base, key.trim(), "default")?;
-            let api = Api::new(paths, port)?;
-            if api.healthy().await {
-                let _ = api.post("/integrations", serde_json::to_value(&rec)?).await;
+            let latest = paths.backups().join(format!("{}.latest.json", c.name()));
+            let prior: Option<pv_core::ClientIntegration> = std::fs::read_to_string(&latest).ok().and_then(|s| serde_json::from_str(&s).ok()).filter(|r: &pv_core::ClientIntegration| r.rolled_back_at.is_none());
+            let rec = client::configure(c, &h, &paths.backups(), &base, key.trim(), "default", prior.as_ref().and_then(|p| p.backup_path.as_deref()))?;
+            if let Ok(api) = Api::new(paths, port) {
+                if api.healthy().await {
+                    let _ = api.post("/integrations", serde_json::to_value(&rec)?).await;
+                }
             }
             std::fs::create_dir_all(paths.backups())?;
             std::fs::write(paths.backups().join(format!("{}.latest.json", c.name())), serde_json::to_string_pretty(&rec)?)?;
@@ -1081,9 +1084,10 @@ async fn clients(paths: &Paths, port: u16, cmd: ClientCmd) -> Result<()> {
             client::rollback(&rec)?;
             rec.rolled_back_at = Some(chrono::Utc::now());
             std::fs::write(&p, serde_json::to_string_pretty(&rec)?)?;
-            let api = Api::new(paths, port)?;
-            if api.healthy().await {
-                let _ = api.post("/integrations", serde_json::to_value(&rec)?).await;
+            if let Ok(api) = Api::new(paths, port) {
+                if api.healthy().await {
+                    let _ = api.post("/integrations", serde_json::to_value(&rec)?).await;
+                }
             }
             println!("restored {} from backup", rec.config_path);
         }

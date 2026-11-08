@@ -255,6 +255,10 @@ impl Detector {
                 }
             }
         }
+        // A model's whole-field "possibly sensitive" judgement is redundant when
+        // localized recognizers already found personal data in that field.
+        let localized: Vec<usize> = rep.findings.iter().filter(|f| !f.whole_field && f.classifier_type == ClassifierType::Builtin).map(|f| f.field_index).collect();
+        rep.findings.retain(|f| !(f.category == category::UNCERTAIN && f.whole_field && localized.contains(&f.field_index)));
         rep.findings = builtin::dedupe(std::mem::take(&mut rep.findings));
         rep
     }

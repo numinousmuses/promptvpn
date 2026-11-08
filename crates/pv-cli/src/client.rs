@@ -123,17 +123,26 @@ pub fn render(client: Client, existing: Option<&str>, base_url: &str, api_key: &
 }
 
 /// Apply with backup. Returns the integration record.
-pub fn configure(client: Client, home: &Path, backups: &Path, base_url: &str, api_key: &str, app_id: &str) -> Result<ClientIntegration> {
+/// `prior_backup`: when the client is already configured (not rolled back), the
+/// original backup is kept so repeated runs stay idempotent and rollback still
+/// restores the user's true original.
+pub fn configure(client: Client, home: &Path, backups: &Path, base_url: &str, api_key: &str, app_id: &str, prior_backup: Option<&str>) -> Result<ClientIntegration> {
     let path = client.config_path(home).context("this client has no config file; use `promptvpn connect show`")?;
     let existing = std::fs::read_to_string(&path).ok();
     let rendered = render(client, existing.as_deref(), base_url, api_key)?;
     std::fs::create_dir_all(backups)?;
     let ts = Utc::now().format("%Y%m%dT%H%M%S");
-    let backup = backups.join(format!("{}-{ts}.bak", client.name()));
-    match &existing {
-        Some(s) => std::fs::write(&backup, s)?,
-        None => std::fs::write(&backup, "__PROMPTVPN_FILE_DID_NOT_EXIST__")?,
-    }
+    let backup = match prior_backup.filter(|b| Path::new(b).exists()) {
+        Some(b) => PathBuf::from(b),
+        None => {
+            let b = backups.join(format!("{}-{ts}.bak", client.name()));
+            match &existing {
+                Some(s) => std::fs::write(&b, s)?,
+                None => std::fs::write(&b, "__PROMPTVPN_FILE_DID_NOT_EXIST__")?,
+            }
+            b
+        }
+    };
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d)?;
     }
@@ -182,8 +191,12 @@ mod tests {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         let original = "# my settings\nmodel = \"gpt-5\"\n\n[model_providers.other]\nname = \"x\"\nbase_url = \"https://x\"\n";
         std::fs::write(&p, original).unwrap();
-        let rec = configure(Client::Codex, home.path(), &backups, "http://127.0.0.1:8787/v1", "pvk_x", "app_1").unwrap();
+        let rec = configure(Client::Codex, home.path(), &backups, "http://127.0.0.1:8787/v1", "pvk_x", "app_1", None).unwrap();
+        // Second run is idempotent and keeps the original backup.
+        let rec2 = configure(Client::Codex, home.path(), &backups, "http://127.0.0.1:8787/v1", "pvk_x", "app_1", rec.backup_path.as_deref()).unwrap();
+        assert_eq!(rec.backup_path, rec2.backup_path);
         let now = std::fs::read_to_string(&p).unwrap();
+        assert_eq!(now.matches("[model_providers.promptvpn]").count(), 1);
         assert!(now.contains("# my settings") && now.contains("[model_providers.other]"));
         assert!(now.contains("[model_providers.promptvpn]") && now.contains("model_provider = \"promptvpn\""));
         assert!(!now.contains("pvk_x"), "codex reads the key from PROMPTVPN_API_KEY");
@@ -195,7 +208,7 @@ mod tests {
     fn opencode_creates_then_rollback_removes() {
         let home = tempfile::tempdir().unwrap();
         let p = home.path().join(".config/opencode/opencode.json");
-        let rec = configure(Client::Opencode, home.path(), &home.path().join("b"), "http://127.0.0.1:8787/v1", "pvk_y", "app").unwrap();
+        let rec = configure(Client::Opencode, home.path(), &home.path().join("b"), "http://127.0.0.1:8787/v1", "pvk_y", "app", None).unwrap();
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
         assert_eq!(v["provider"]["promptvpn"]["options"]["baseURL"], "http://127.0.0.1:8787/v1");
         rollback(&rec).unwrap();
@@ -214,7 +227,7 @@ mod tests {
         let p = home.path().join(".config/opencode/opencode.json");
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(&p, "{ not json").unwrap();
-        assert!(configure(Client::Opencode, home.path(), &home.path().join("b"), "u", "k", "a").is_err());
+        assert!(configure(Client::Opencode, home.path(), &home.path().join("b"), "u", "k", "a", None).is_err());
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "{ not json");
     }
 }
