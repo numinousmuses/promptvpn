@@ -108,7 +108,7 @@ fn pct(v: &mut [f64], p: f64) -> f64 {
 }
 
 pub fn load(corpus: &str) -> Result<(Vec<Case>, CorpusMeta)> {
-    let text = std::fs::read_to_string(corpus).with_context(|| format!("read {corpus}"))?;
+    let text = std::fs::read_to_string(corpus).with_context(|| format!("read {corpus} (generate it with: python3 -I scripts/gen_eval_corpus.py > {corpus})"))?;
     let mut cases = vec![];
     let mut meta = CorpusMeta::default();
     for (i, line) in text.lines().enumerate() {

@@ -6,7 +6,7 @@ python3 -I scripts/gen_eval_corpus.py > tests/fixtures/eval_corpus.jsonl
 promptvpn model install edge && promptvpn model install small && promptvpn model install base
 promptvpn eval --configs all --out docs/eval/results.json
 ```
-Raw results: `docs/eval/results-2026-11-08.json`.
+Raw results: `docs/eval/results-2026-11-08.json`. The corpus file is generated (not committed) because its fake keys trip secret scanners.
 
 ## Setup
 

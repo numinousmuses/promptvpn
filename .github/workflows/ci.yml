@@ -31,6 +31,7 @@ jobs:
         run: cargo build -p pv-cli && sh skills/promptvpn-setup/tests/run.sh </dev/null
       - name: Evaluation (privacy gate, deterministic + GLiNER sizes)
         run: |
+          python3 -I scripts/gen_eval_corpus.py > tests/fixtures/eval_corpus.jsonl
           cargo run -q -p pv-cli -- eval --configs deterministic --out eval.json
           python3 -I -c "import json; r=json.load(open('eval.json'))[0]; print(r['critical_escapes'], r['false_block_rate']); assert r['critical_escapes'] <= 1 and r['false_block_rate'] == 0"
           for s in edge small base; do PV_HOME=$PWD/.ci cargo run -q -p pv-cli -- daemon --port 8787 & sleep 5; PV_HOME=$PWD/.ci cargo run -q -p pv-cli -- model install $s || true; kill %1 || true; done
