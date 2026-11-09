@@ -52,4 +52,4 @@ An earlier run on the same corpus measured two generative classifiers through Ol
 
 - The corpus was written alongside the recognizers; deterministic recall is optimistic. Zero escapes on a finite corpus is not a bound.
 - Latency is detection time in-process. Policy evaluation adds well under a millisecond; HTTP and the upstream model dominate end to end.
-- Required for each release: rerun all configurations; CI runs this benchmark with all three model sizes and fails on more than one critical escape or above 2% false blocks.
+- Required for each release: rerun all configurations with `sh scripts/check.sh --models` (fails on more than one critical escape or above 2% false blocks).

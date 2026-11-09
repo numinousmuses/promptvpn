@@ -5,7 +5,7 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 
 ## Phase 0: contracts and threat model
 - [x] Typed, versioned schemas (Policy, Finding, Decision, TransformMap, AuditEvent, PendingApproval, ProviderConfig, ClientIntegration) in `pv-core`
-- [x] JSON Schema export (`promptvpn schema`, `schemas/`), TypeScript generation (`apps/dashboard npm run gen:types`), CI checks both are current
+- [x] JSON Schema export (`promptvpn schema`, `schemas/`), TypeScript generation (`apps/dashboard npm run gen:types`) (`scripts/check.sh` checks both are current)
 - [~] OpenAPI: not generated; the admin API is described in the dashboard's typed client and the schemas. Low value for a local-only API
 - [x] Threat model + trust boundaries (`docs/threat-model.md`), policy semantics (`docs/policy-semantics.md`)
 - [x] Executable architecture tests: precedence, audit privacy, block behavior (`pv-core/tests/policy.rs`, `pv-daemon/tests/gates.rs`)
@@ -34,7 +34,7 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 - [x] REQUIRE_APPROVAL / BLOCK_AND_REVIEW → immediate 428 `PV_APPROVAL_REQUIRED`, encrypted 15-min payload, crash-safe expiry
 - [x] Approve once, deny, cancel, edit-and-retry (reclassified), whitelist, blacklist, save-as-rule (exact/category/concept/guidance)
 - [x] Owner-only reveal with confirmation, audited
-- [~] Desktop notifications: macOS osascript (verified), Linux notify-send (untested until CI), rate limited, no values
+- [~] Desktop notifications: macOS osascript (verified), Linux notify-send (untested: no Linux host), rate limited, no values
 - [x] Chat Completions and Responses: non-stream, SSE, tools; Responses↔Chat translation
 - [x] Output inspection, 256-byte streaming hold-back, scoped restoration
 - [x] Client integrations (codex, aider, opencode, env) with backup, idempotent re-run, rollback
@@ -43,7 +43,7 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 ## Phase 4: setup skill and packaging
 - [x] `skills/promptvpn-setup/SKILL.md`, scripts (discover, verified install, egress test, rollback), 10 script tests, generated adapters
 - [x] Packaging script with signed SHA256SUMS; macOS arm64 native + x86_64 cross build verified (x86 binary passes `connect test` under Rosetta)
-- [~] Linux x86_64/arm64: CI matrix written, not run (no Linux host or Docker locally; runs on push)
+- [~] Linux x86_64/arm64: not built or run yet (no Linux host or Docker here; no hosted CI by policy). Run `sh scripts/check.sh` on a Linux box
 - [x] Daemon autostart (launchd / systemd user) only with confirmation
 - [x] Uninstall keeps data by default; `--purge` needs typed DELETE
 - [~] **Gate:** skill flow exercised end to end on this Mac in a fresh PV_HOME (init, real models, egress test, client configure/rollback). A clean VM run is still to do
@@ -52,8 +52,8 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 - [x] Model discovery with privacy tiers; alias detection; `x-no-aliasing`
 - [x] Attestation via official `nearai-inference-sdk` 0.3.0: gateway TDX + TLS SPKI binding, model TDX, NRAS GPU evidence required; live test passes
 - [x] PRIVATE_ROUTE only to verified eligible models; E2EE to attested key; no downgrade (tested with mock backend)
-- [!] **Gate:** real NEAR inference + response-signature verification needs a NEAR API key (`promptvpn near login` then `promptvpn near test`)
-- [!] Spec's preferred `deepseek-ai/DeepSeek-V4-Flash` is an alias of `z-ai/glm-5.3-flash`; Joshua to confirm `deepseek-ai/DeepSeek-V4.1-Flash-1017` as the default
+- [~] **Gate:** attestation verifies live without a key; chat inference and response signatures need a NEAR API key (NEAR returns 401 without one), so users run `promptvpn near login` once
+- [x] Default NEAR model `deepseek-ai/DeepSeek-V4.1-Flash-1017` (confirmed by Joshua); onboarding dropdown lists live NEAR models that pass attestation; `promptvpn near use <model>`
 
 ## Dashboard
 - [x] Onboarding wizard (6 steps, consent unchecked by default, Skip for now, critical toggles with typed confirmation)
@@ -70,3 +70,5 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 - 2026-11-08: LFM3 on Apple Silicon runs on Ollama's MLX runner without schema enforcement; bounded recovery parser.
 - 2026-11-08: Real end-to-end: fresh PV_HOME, init, LFM3 + GLiNER active, concept prompt blocked, public spec allowed, email tokenized and restored.
 - 2026-11-08: Re-architecture: generative classifiers and concepts removed; GLiNER base default (accuracy 0.944 vs 0.881 rules-only; person recall 0.26 → 0.89; health 0.52 → 0.86; p50 21 ms); custom entity types added.
+- 2026-11-08: Demo videos (Remotion, real captures) in docs/demo/; repo public at github.com/numinousmuses/promptvpn; generated eval corpus no longer committed (fake keys tripped GitHub push protection).
+- 2026-11-08: Hosted CI removed at Joshua's request (one accidental run cancelled ~1 min in; Actions disabled on the repo). Local `scripts/check.sh` replaces it.

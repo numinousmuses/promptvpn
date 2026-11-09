@@ -31,6 +31,6 @@ Each entry: what differs, why, user-visible impact. Items marked **needs Joshua*
 
 ## Verification gaps
 
-17. **Linux runtime not exercised on this machine.** There is no Docker or Linux host available locally. `.github/workflows/ci.yml` runs the full test suite, skill tests and the privacy gate on Ubuntu x86_64 and ARM64 (and both macOS architectures) once the repository is pushed. The Linux keyring backend (`linux-native-sync-persistent`) and `notify-send` notifications are untested until then.
-18. **Release signing key** was generated locally (`~/.promptvpn-release/release_key`, private key not in the repo; public key in `skills/promptvpn-setup/scripts/release-key.pub`). For real releases the private key should move to a CI secret (`PROMPTVPN_RELEASE_SSH_KEY`) and the local copy be removed.
+17. **Linux runtime not exercised.** There is no Linux host or Docker here, and the project does not use hosted CI. Linux builds and tests are pending a Linux machine: run `sh scripts/check.sh` there. The Linux keyring backend (`linux-native-sync-persistent`) and `notify-send` notifications are untested.
+18. **Release signing key** was generated locally (`~/.promptvpn-release/release_key`, private key not in the repo; public key in `skills/promptvpn-setup/scripts/release-key.pub`). Releases are signed locally with `scripts/package.sh`; keep the private key offline and backed up.
 19. **Desktop notifications** use `osascript` (macOS) and `notify-send` (Linux) without an app bundle identity, so macOS shows them as Script Editor notifications.
