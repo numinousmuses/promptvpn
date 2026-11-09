@@ -183,6 +183,8 @@ enum NearCmd {
     Test,
     /// Verify TEE attestation for a model (no API key needed).
     VerifyAttestation { model: Option<String> },
+    /// Switch the NEAR model (verified first) for normal and private requests.
+    Use { model: String },
 }
 
 #[derive(Subcommand)]
@@ -899,7 +901,7 @@ async fn near(paths: &Paths, port: u16, j: bool, cmd: NearCmd) -> Result<()> {
             });
         }
         NearCmd::VerifyAttestation { model } => {
-            let model = model.unwrap_or_else(|| "deepseek-ai/DeepSeek-V4.1-Flash-1017".into());
+            let model = model.unwrap_or_else(|| pv_provider::near::DEFAULT_NEAR_MODEL.into());
             let api = Api::new(paths, port)?;
             let v = if api.healthy().await {
                 api.post("/near/verify", json!({"model": model})).await?
@@ -926,7 +928,7 @@ async fn near(paths: &Paths, port: u16, j: bool, cmd: NearCmd) -> Result<()> {
             if key.is_empty() {
                 bail!("empty key");
             }
-            let model = model.unwrap_or_else(|| "deepseek-ai/DeepSeek-V4.1-Flash-1017".into());
+            let model = model.unwrap_or_else(|| pv_provider::near::DEFAULT_NEAR_MODEL.into());
             let ver = api.post("/near/verify", json!({"model": model})).await?;
             if ver["eligible"] != true {
                 println!("warning: {model} is not TEE-eligible: {}", ver["error"].as_str().unwrap_or(""));
@@ -935,6 +937,22 @@ async fn near(paths: &Paths, port: u16, j: bool, cmd: NearCmd) -> Result<()> {
             api.post("/providers", cfg).await?;
             println!("NEAR AI configured (key stored in the OS credential store). Default model {model}.");
             println!("Make it the default destination: promptvpn init (or Settings in the dashboard).");
+        }
+        NearCmd::Use { model } => {
+            let api = ensure_running(paths, port).await?;
+            let v = api.post("/near/verify", json!({"model": model})).await?;
+            if v["eligible"] != true {
+                bail!("{model} is not TEE-eligible: {}", v["error"].as_str().unwrap_or(""));
+            }
+            let p = api.get("/providers").await?;
+            let mut cfg = p["providers"].as_array().into_iter().flatten().find(|x| x["config"]["id"] == "near").map(|x| x["config"].clone()).context("NEAR is not configured; run `promptvpn near login` first")?;
+            cfg["default_model"] = json!(model);
+            api.post("/providers", cfg).await?;
+            let s = api.get("/settings").await?;
+            if s["engine"]["private_destination"] == "near" {
+                api.put("/settings", json!({"engine": {"private_model": model}})).await?;
+            }
+            println!("NEAR model set to {model} (attestation verified)");
         }
         NearCmd::Test => {
             let api = ensure_running(paths, port).await?;

@@ -918,6 +918,7 @@ async fn onboarding(State(st): St) -> R {
         "ollama": ollama_status().await,
         "near_default_base": pv_provider::near::DEFAULT_NEAR_BASE,
         "spec_preferred_model": pv_provider::near::SPEC_PREFERRED_MODEL,
+        "near_default_model": pv_provider::near::DEFAULT_NEAR_MODEL,
         "base_url": st.base_url(),
         "platform": crate::models::os_name(),
     })))

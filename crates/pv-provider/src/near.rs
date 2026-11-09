@@ -19,6 +19,9 @@ pub const DEFAULT_NEAR_BASE: &str = "https://cloud-api.near.ai/v1";
 /// Spec's preferred model. Live discovery on 2026-11-08 showed this ID is an
 /// alias of `z-ai/glm-5.3-flash`, so verification rejects it (see docs/deviations.md).
 pub const SPEC_PREFERRED_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
+/// Default NEAR model (NEAR-operated GPU TEE; confirmed by Joshua 2026-11-08).
+/// Always verified before use; users can pick any eligible model.
+pub const DEFAULT_NEAR_MODEL: &str = "deepseek-ai/DeepSeek-V4.1-Flash-1017";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NearModelInfo {

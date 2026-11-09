@@ -167,8 +167,8 @@ pub async fn run(paths: &Paths, port: u16, a: InitArgs) -> Result<()> {
         near_skip = ask("  Configure NEAR AI now? (yes / skip)", "yes") == "skip";
     }
     if !near_skip {
-        let model = near_model.clone().unwrap_or_else(|| "deepseek-ai/DeepSeek-V4.1-Flash-1017".into());
-        println!("  Spec-preferred `{}` is an alias on the live gateway and is not eligible.", ob["spec_preferred_model"].as_str().unwrap_or(""));
+        let model = near_model.clone().unwrap_or_else(|| pv_provider::near::DEFAULT_NEAR_MODEL.into());
+        println!("  Available models: `promptvpn near models`. Only models whose attestation verifies can be used.");
         let model = if interactive { ask("  NEAR model (must verify as Private TEE)", &model) } else { model };
         let v = api.post("/near/verify", json!({"model": model})).await?;
         if v["eligible"] == true {

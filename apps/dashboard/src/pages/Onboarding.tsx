@@ -596,7 +596,6 @@ function Step5({
 
   const eligible = Object.values(checks).filter((v) => v.eligible);
   const candidates = (models ?? []).filter(isTeeCandidate).filter((m) => !checks[m.id]);
-  const specAlias = models?.find((m) => m.aliases.includes(info.spec_preferred_model));
   const ollamaTags = (info.ollama.models ?? []).filter((t) => !/guard/i.test(t));
   const destOptions = useMemo(() => {
     const list = providers.map((p) => ({ id: p.config.id, label: `${p.config.display_name} (${p.config.declared_tier})` }));
@@ -665,12 +664,6 @@ function Step5({
               Details
             </Button>
           </div>
-        ) : null}
-        {specAlias ? (
-          <p className="muted small">
-            The spec names <span className="mono">{info.spec_preferred_model}</span>, but NEAR currently serves that name as an alias of <span className="mono">{specAlias.id}</span>, a GLM model. Aliases are not eligible, so Prompt VPN offers the DeepSeek TEE model{' '}
-            <span className="mono">{DEFAULT_NEAR_CANDIDATE}</span> instead.
-          </p>
         ) : null}
         {candidates.length ? (
           <div className="row gap-s" style={{ alignItems: 'flex-end' }}>
