@@ -29,7 +29,10 @@ jobs:
         run: python3 -I scripts/gen_skill_adapters.py . && git diff --exit-code skills
       - name: Skill script tests
         run: cargo build -p pv-cli && sh skills/promptvpn-setup/tests/run.sh </dev/null
-      - name: Deterministic evaluation (privacy gate)
+      - name: Evaluation (privacy gate, deterministic + GLiNER sizes)
         run: |
           cargo run -q -p pv-cli -- eval --configs deterministic --out eval.json
           python3 -I -c "import json; r=json.load(open('eval.json'))[0]; print(r['critical_escapes'], r['false_block_rate']); assert r['critical_escapes'] <= 1 and r['false_block_rate'] == 0"
+          for s in edge small base; do PV_HOME=$PWD/.ci cargo run -q -p pv-cli -- daemon --port 8787 & sleep 5; PV_HOME=$PWD/.ci cargo run -q -p pv-cli -- model install $s || true; kill %1 || true; done
+          cargo run -q -p pv-cli -- eval --configs all --models-dir .ci/models --out eval-all.json
+          python3 -I -c "import json; [print(r['config'], r['critical_escapes'], r['false_block_rate'], r['decision_accuracy']) for r in json.load(open('eval-all.json'))]; assert all(r['critical_escapes'] <= 1 and r['false_block_rate'] <= 0.02 for r in json.load(open('eval-all.json')))"

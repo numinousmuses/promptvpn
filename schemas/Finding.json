@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Finding",
-  "description": "One detected sensitive span (or whole-field semantic judgement).\n\nOffsets are UTF-8 byte offsets into the exact local buffer of `field_path`. A finding never carries the matched text.",
+  "description": "One detected sensitive span (or a whole-field marker such as a classifier failure).\n\nOffsets are UTF-8 byte offsets into the exact local buffer of `field_path`. A finding never carries the matched text.",
   "type": "object",
   "required": [
     "category",
@@ -16,7 +16,7 @@
   ],
   "properties": {
     "category": {
-      "description": "Built-in category (e.g. `GOVERNMENT_ID`), `EXACT_SECRET`, `CONCEPT:<id>`, `UNCERTAIN` or `CLASSIFIER_FAILURE`.",
+      "description": "Built-in category (e.g. `GOVERNMENT_ID`), `EXACT_SECRET`, `CUSTOM:<id>`, `UNCERTAIN` or `CLASSIFIER_FAILURE`.",
       "type": "string"
     },
     "classifier_type": {
@@ -27,12 +27,6 @@
       "default": "",
       "type": "string"
     },
-    "concept_id": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
     "confidence": {
       "type": "number",
       "format": "float"
@@ -41,6 +35,12 @@
       "type": "integer",
       "format": "uint",
       "minimum": 0.0
+    },
+    "entity_id": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "evidence": {
       "type": "string"
@@ -104,10 +104,10 @@
           ]
         },
         {
-          "description": "User-defined natural-language concepts judged by the local generative classifier.",
+          "description": "Owner-defined entity types found by the span model (GLiNER zero-shot labels).",
           "type": "string",
           "enum": [
-            "semantic"
+            "custom"
           ]
         }
       ]

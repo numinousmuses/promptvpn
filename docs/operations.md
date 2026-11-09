@@ -26,7 +26,7 @@ If encrypted records exist and no key can be loaded, the vault refuses to open (
 2. Back up the data directory (stop the daemon first, or use `sqlite3 promptvpn.db ".backup copy.db"`).
 3. To restore on a new machine: copy the data directory, run `promptvpn vault recover recovery.json` with the daemon stopped, then `promptvpn start`.
 
-Without the recovery bundle, a lost keychain entry means the encrypted contents (secrets, mappings, concepts) are unrecoverable. Policies, settings and audit metadata are not encrypted and remain readable, but the audit chain cannot be verified without the key.
+Without the recovery bundle, a lost keychain entry means the encrypted contents (secrets, mappings, custom entity types) are unrecoverable. Policies, settings and audit metadata are not encrypted and remain readable, but the audit chain cannot be verified without the key.
 
 ## Retention
 

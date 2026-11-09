@@ -44,19 +44,17 @@ sh skills/promptvpn-setup/scripts/install.sh --archive <path-or-https-url-to-pro
 ```
 The script verifies the SSH signature over `SHA256SUMS` with the pinned release key (`release-key.pub`), checks the archive hash, and installs into `~/.local/bin` without sudo. It refuses to install if verification fails. From a source checkout, `cargo build --release -p pv-cli` is the alternative.
 
-### 4. Ollama and local models
-```sh
-promptvpn ollama status
-```
-If Ollama is missing, show the official instructions it prints (macOS: https://ollama.com/download/mac; Linux: https://ollama.com/download/linux) and **wait** for the user to install it. Then let the user choose the generative classifier (one active at a time):
+### 4. Detection model
+Prompt VPN's detection model is GLiNER PII (Apache-2.0). It runs inside Prompt VPN; no Ollama or GPU is needed. Let the user pick a size:
 
-| Option | Model | Download | License note |
-|---|---|---|---|
-| `lfm3` | LFM3-1.7B (semantic concepts, JSON output) | ~1.1–1.7 GB | LFM Open License: commercial use only under $10M annual revenue |
-| `qwen3guard` | Qwen3Guard-Gen-0.6B (guard model, PII category) | ~0.8 GB | Apache-2.0 |
-| `none` | deterministic + GLiNER only | 0 | |
+| Size | Download | Notes |
+|---|---|---|
+| `base` | ~197 MB | Recommended: best accuracy in the bundled benchmark, ~20 ms per request |
+| `small` | ~83 MB | |
+| `edge` | ~46 MB | Lowest memory |
+| `none` | 0 | Deterministic recognizers only; names and free-text details are not detected |
 
-GLiNER PII Edge (~50 MB, Apache-2.0) runs inside Prompt VPN (not Ollama) and is installed by default.
+Files are pinned by revision and SHA-256 in `models.lock.json` and verified before use. Ollama is optional and only matters if the user wants a local model to *answer* requests (`promptvpn ollama status`; if missing, show the official instructions it prints and wait for the user).
 
 ### 5. Configure (user's choices)
 Interactive (best when the user is at a terminal):
@@ -65,7 +63,7 @@ promptvpn init
 ```
 Or the web wizard: `promptvpn init --dashboard`. For a scripted run, translate the user's answers into flags, e.g.:
 ```sh
-promptvpn init --non-interactive --classifier lfm3 --fallback review --near-skip
+promptvpn init --non-interactive --model base --fallback review --near-skip
 ```
 Explain the uncertain/failure choice: **review** (default: hold locally and notify) vs **tee** (send to a NEAR model only after its TEE attestation verifies; still leaves the device; requires the user's explicit `--tee-consent`).
 
@@ -103,7 +101,7 @@ It backs up the original file first and prints the rollback command.
 ```sh
 promptvpn dashboard
 ```
-Walk the user through: Activity (metadata only, no prompt text), Approvals (approve once / edit / always block / save as rule; held requests expire in 15 minutes; approving does not resend, the client retries), Policies and the playground, Categories (critical protections on; relaxing one needs typed confirmation), Secrets (register exact values; they are encrypted and never shown again), Concepts (topics in plain language), desktop notifications, and the emergency stop (`promptvpn emergency-stop`).
+Walk the user through: Activity (metadata only, no prompt text), Approvals (approve once / edit / always block / save as rule; held requests expire in 15 minutes; approving does not resend, the client retries), Policies and the playground, Categories (critical protections on; relaxing one needs typed confirmation), Secrets (register exact values; they are encrypted and never shown again), Custom entities (things to find by description, like "insurance policy number"; `promptvpn entity add --label ...`), desktop notifications, and the emergency stop (`promptvpn emergency-stop`).
 
 ### 9. Hand-off: diagnostics, rollback, uninstall
 ```sh
@@ -118,6 +116,6 @@ promptvpn uninstall --purge      # deletes data after typing DELETE
 ## Troubleshooting
 - `PV_APPROVAL_REQUIRED` (HTTP 428): open the dashboard Approvals page, decide, then retry the same request.
 - `PV_POLICY_BLOCKED` (403): expected for critical data; see the event in Activity. Never weaken a critical protection for the user; they can do it themselves under Categories.
-- `PV_CLASSIFIER_UNAVAILABLE` or `CLASSIFIER_FAILURE` events: run `promptvpn model list`; Ollama may be stopped or the model missing.
+- `CLASSIFIER_FAILURE` events (requests held for review): the detection model is missing or failed to load. Run `promptvpn model list` and `promptvpn model install`.
 - `PV_ROUTE_FORBIDDEN`: content needed a private route but no verified TEE (or approved local model) was available.
 - Port conflict: `promptvpn start --port 8790` (Prompt VPN only ever binds 127.0.0.1).

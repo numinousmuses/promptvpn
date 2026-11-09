@@ -19,15 +19,16 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 - [x] Mock upstream recording exact bytes and auth headers
 - [x] **Gate:** SSN never reaches mock upstream; tokenized email restored; events and disk omit values
 
-## Phase 2: classifiers, Ollama, policy editor
-- [x] 15 built-in concepts with checksums and context cues; encoded (base64, %XX, \u, \x) and Unicode-confusable views
+## Phase 2: detection (re-architected 2026-11-08: no generative classifiers)
+- [x] 15 built-in categories with checksums and context cues; encoded (base64, %XX, \u, \x) and Unicode-confusable views
 - [x] Exact values, patterns, file fingerprints; keyed fingerprints; allowlist
-- [x] GLiNER PII Edge embedded (vendored gline-rs with ModernBERT fixes), pinned + hash-verified provisioning, plausibility filter
-- [x] Qwen3Guard and LFM3 adapters; one active; identity verified against models.lock.json; Ollama detection and install guidance (never installs)
-- [x] Overlap merge keeps secret findings; whole-field judgements never partially transformed
-- [x] models.lock.json
-- [x] Eval corpus (223 synthetic labeled cases) + `promptvpn eval` with per-category P/R/FNR, critical escape rate, false-block rate, utility, latency p50/p95, RSS, tokens/s
-- [x] **Gate:** reproducible metrics for all four configs (`docs/evaluation.md`); classifier failure → fallback, never allow (tested)
+- [x] GLiNER PII edge/small/base embedded (vendored gline-rs, token + span mode), pinned + sha256-verified downloads, base default, loads off the startup path
+- [x] Custom entity types (GLiNER zero-shot labels → `CUSTOM:<id>` spans, tokenize by default)
+- [x] Fail closed when the installed model fails or custom entities exist without a model; model-only critical spans < 0.8 → review
+- [x] Overlap merge keeps secret findings
+- [x] models.lock.json (GLiNER sizes)
+- [x] Eval corpus (270 cases incl. free-text PII and custom entities); results per GLiNER size in `docs/evaluation.md`
+- [x] Generative classifiers (Qwen3Guard, LFM3) and semantic concepts removed by Joshua's decision after measurement (`docs/deviations.md` #3–4)
 
 ## Phase 3: approvals, streaming, integrations
 - [x] REQUIRE_APPROVAL / BLOCK_AND_REVIEW → immediate 428 `PV_APPROVAL_REQUIRED`, encrypted 15-min payload, crash-safe expiry
@@ -68,3 +69,4 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 - 2026-11-08: gline-rs fixes (ModernBERT token IDs, logits layout); GLiNER plausibility filter after real false positives.
 - 2026-11-08: LFM3 on Apple Silicon runs on Ollama's MLX runner without schema enforcement; bounded recovery parser.
 - 2026-11-08: Real end-to-end: fresh PV_HOME, init, LFM3 + GLiNER active, concept prompt blocked, public spec allowed, email tokenized and restored.
+- 2026-11-08: Re-architecture: generative classifiers and concepts removed; GLiNER base default (accuracy 0.944 vs 0.881 rules-only; person recall 0.26 → 0.89; health 0.52 → 0.86; p50 21 ms); custom entity types added.

@@ -66,7 +66,7 @@ export type FallbackMode = 'TEE_PRIVATE_ROUTE' | 'BLOCK_AND_REVIEW';
  * This interface was referenced by `PromptVpnSchemas`'s JSON-Schema
  * via the `definition` "ClassifierType".
  */
-export type ClassifierType = 'builtin' | 'exact' | 'semantic';
+export type ClassifierType = 'builtin' | 'exact' | 'custom';
 /**
  * This interface was referenced by `PromptVpnSchemas`'s JSON-Schema
  * via the `definition` "PendingStatus".
@@ -229,7 +229,7 @@ export interface FallbackSettings {
   uncertain_threshold?: number;
 }
 /**
- * One detected sensitive span (or whole-field semantic judgement).
+ * One detected sensitive span (or a whole-field marker such as a classifier failure).
  *
  * Offsets are UTF-8 byte offsets into the exact local buffer of `field_path`. A finding never carries the matched text.
  *
@@ -238,7 +238,7 @@ export interface FallbackSettings {
  */
 export interface Finding {
   /**
-   * Built-in category (e.g. `GOVERNMENT_ID`), `EXACT_SECRET`, `CONCEPT:<id>`, `UNCERTAIN` or `CLASSIFIER_FAILURE`.
+   * Built-in category (e.g. `GOVERNMENT_ID`), `EXACT_SECRET`, `CUSTOM:<id>`, `UNCERTAIN` or `CLASSIFIER_FAILURE`.
    */
   category: string;
   classifier_type: ClassifierType;
@@ -246,9 +246,9 @@ export interface Finding {
    * Classifier/model version that produced the finding.
    */
   classifier_version?: string;
-  concept_id?: string | null;
   confidence: number;
   end_byte: number;
+  entity_id?: string | null;
   evidence: string;
   /**
    * Index into the request's extracted content fields.
@@ -336,7 +336,7 @@ export interface Scope {
  */
 export interface Selector {
   /**
-   * Category IDs. `*` matches all; `CONCEPT:*` all concepts; `EXACT_SECRET:<id>` one secret.
+   * Category IDs. `*` matches all; `CUSTOM:*` all custom entity types; `EXACT_SECRET:<id>` one secret.
    */
   categories: string[];
   /**

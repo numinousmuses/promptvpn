@@ -1,44 +1,55 @@
 # Evaluation
 
-Reproduce: `python3 -I scripts/gen_eval_corpus.py > tests/fixtures/eval_corpus.jsonl` then `promptvpn eval --configs all --gliner-dir <gliner files> --out docs/eval/results.json`. Raw results for the run below: `docs/eval/results-2026-11-08.json` (and `.md`).
+Reproduce:
+```sh
+python3 -I scripts/gen_eval_corpus.py > tests/fixtures/eval_corpus.jsonl
+promptvpn model install edge && promptvpn model install small && promptvpn model install base
+promptvpn eval --configs all --out docs/eval/results.json
+```
+Raw results: `docs/eval/results-2026-11-08.json`.
 
 ## Setup
 
-- Corpus: 223 synthetic cases (seed 7), all values fake. 103 critical labels (SSNs incl. invalid ranges and undelimited, 7 API key formats, cards, PEM/OpenSSH keys, passwords, JWT, URL credentials, passports, driver's licenses), noncritical PII (emails in prose/code/markdown/JSON, phones, addresses, DOB, health, IBAN, accounts), names, overlaps, registered exact values with case/space variants, 8 semantic-only business disclosures across 3 concepts, encoding and Unicode evasion, tool arguments, tool results, logs, prompt injection, a ~20 KB context, 25 hard negatives, and 15 "hard" variants.
-- Policy: defaults, destination `EXTERNAL_UNVERIFIED`, fallback block-and-review, concepts set to BLOCK.
-- Hardware: Apple M-series Mac (18 cores, 48 GB), Ollama 0.40.12. Qwen3Guard: `hf.co/mradermacher/Qwen3Guard-Gen-0.6B-GGUF:Q8_0` (llama.cpp runner). LFM3: `lfm3:1.7b` (MLX nvfp4 runner on Apple Silicon).
-- Each config includes the deterministic recognizers and exact matcher; "gliner" adds the span model; the generative configs add one classifier on top of deterministic (GLiNER off, to isolate its effect).
+- Corpus: 270 synthetic cases (seed 7), all values fake. 103 critical labels (SSNs incl. invalid ranges, undelimited and dotted, 8 API key formats, cards, PEM/OpenSSH keys, passwords, JWT, URL credentials, passports, driver's licenses), structured PII (emails in prose/code/markdown/JSON, phones, addresses, DOB, health, IBAN, accounts), **free-text PII** (lowercase names, names without cue words, addresses without street numbers, conditions in casual prose, spelled-out dates and numbers), registered exact values, **custom entity types** ("insurance policy number", "employee id"), encoding and Unicode evasion, tool arguments, tool results, logs, prompt injection, a ~20 KB context, 25 hard negatives, 15 "hard" variants.
+- Policy: defaults (names allowed, PII tokenized, critical blocked), destination `EXTERNAL_UNVERIFIED`, fallback block-and-review; custom entities tokenized.
+- Hardware: Apple M-series Mac, CPU only (ONNX Runtime, 4 threads).
 
 ## Results (2026-11-08)
 
-| config | critical escapes | decision accuracy | false-block rate | utility kept | p50 ms | p95 ms | peak RSS MB | tok/s |
-|---|---|---|---|---|---|---|---|---|
-| deterministic | 1/103 | 0.960 | 0.000 | 0.884 | 0.2 | 1.7 | 30 | - |
-| gliner | 1/103 | 0.960 | 0.000 | 0.884 | 10.1 | 16.6 | 369 | - |
-| qwen3guard | 0/103 | 0.955 | 0.009 | 0.884 | 82 | 114 | 372 | 174 |
-| lfm3 | 0/103 | 0.928 | 0.134 | 0.854 | 848 | 3129 | 373 | 83 |
+| config | critical escapes | decision accuracy | false-block rate | utility kept | p50 ms | p95 ms | model download |
+|---|---|---|---|---|---|---|---|
+| deterministic only | 1/103 | 0.881 | 0.000 | 0.891 | 0.2 | 1.7 | 0 |
+| + GLiNER edge | 1/103 | 0.922 | 0.000 | 0.908 | 10.6 | 17.1 | 46 MB |
+| + GLiNER small | 1/103 | 0.922 | 0.006 | 0.891 | 19.5 | 27.8 | 83 MB |
+| **+ GLiNER base (default)** | **1/103** | **0.944** | **0.006** | **0.912** | **20.9** | **28.1** | **197 MB** |
 
-Semantic concept recall / precision (8 disclosures):
+Recall / precision for the categories the model is there for:
 
-| config | accelerator specs | negotiations | unreleased financials |
-|---|---|---|---|
-| deterministic, gliner | 0 / - | 0 / - | 0 / - |
-| qwen3guard | 0 / - | 0 / - | 0 / - |
-| lfm3 | 1.00 / 0.75 | 1.00 / 0.16 | 0.50 / 1.00 |
+| category | deterministic | + GLiNER base |
+|---|---|---|
+| PERSON | 0.26 / 1.00 | 0.89 / 0.69 |
+| HEALTH_INFORMATION | 0.52 / 1.00 | 0.86 / 0.90 |
+| ADDRESS | 0.65 / 1.00 | 0.71 / 1.00 |
+| DOB | 0.90 / 1.00 | 1.00 / 0.91 |
+| custom: employee id | 0 | 1.00 / 0.67 |
+| custom: insurance policy number | 0 | 0.33 / 1.00 |
 
-Peak RSS is process-wide and cumulative across configs in one run (the first config's 30 MB is the deterministic baseline; GLiNER adds ~340 MB). Generative model memory lives in Ollama and is not included.
+Critical categories (government IDs, cards, keys, private keys, passwords, passports, licenses) are 0.98–1.00 recall at 1.00 precision in both configurations: the deterministic layer carries them.
 
 ## What the numbers say
 
-- **Deterministic recognizers carry the critical protection.** The single escape is an SSN spelled out in words ("two one nine, zero nine, ..."). Qwen3Guard and LFM3 catch it only as "possibly sensitive", which routes it to review.
-- **GLiNER adds no measured benefit on this corpus**, because the corpus is dominated by structured identifiers the recognizers already cover. It earns its place on free-text names, conditions and lowercase or unstructured entities (it caught `maria gonzalez` and `metformin` in manual checks) at ~10 ms per request. Its raw output needed a plausibility filter: unfiltered, it labeled "France" an address and "Orion-7" a driver's license.
-- **Qwen3Guard does not learn custom concepts.** Appending owner concepts as extra guard categories produced zero recall. It is a good, fast general PII backstop (0.9% false blocks) but cannot enforce Type 3 concepts. **Joshua: if semantic concepts matter, Qwen3Guard alone does not deliver them.**
-- **LFM3 is the only configuration that enforces concepts**, at a cost: 13% of benign or PII-only prompts were blocked, almost all ordinary email prompts misread as the "confidential negotiations" concept, and p95 latency is 3 s on the MLX runner. Results vary between runs on the MLX runner (unreleased-financials recall was 1.0 in one run, 0.5 in this one). An evidence-grounding filter was tried and removed: it cut true matches without fixing the false ones.
-- **Utility**: 85–88% of non-sensitive bytes survive in transformed requests; the remainder are context words captured inside spans (for example "DOB:" cues or address tails).
+- **Rules carry the critical protection.** The one escape is an SSN spelled out in words. No configuration catches it.
+- **GLiNER is what makes free-text PII work.** Names go from 26% to 89% recall, health details from 52% to 86%. Base beats small and edge on accuracy, and it is not slower than small (its DeBERTa encoder is span-level and efficient on short prompts).
+- **Precision cost is in names.** 31% of GLiNER's PERSON spans are not people in the label set (product or place names). Names are allowed by default, so this does not block anything; it only matters if you set names to tokenize.
+- **Custom entity types work unevenly.** "employee id" was found every time; "insurance policy number" only a third of the time, because GLiNER often prefers a built-in label for ID-like strings. Model-only critical labels below 0.8 confidence go to review instead of hard-blocking, so such mislabels cost a review, not a broken request.
+- **Free-form addresses stay hard**: 4 of 6 addresses without a street number were missed by every configuration.
+
+## Removed configurations
+
+An earlier run on the same corpus measured two generative classifiers through Ollama: Qwen3Guard-Gen-0.6B (0 of 8 custom topics, 0.9% false blocks, 82 ms) and LFM3-1.7B (7 of 8 topics, 13% false blocks, 0.8–3 s). Neither returned reliable spans, so both were removed; see `docs/deviations.md`.
 
 ## Caveats
 
-- The corpus was written alongside the recognizers, and 15 "hard" cases were added specifically to find gaps (8 were fixed afterwards). Treat deterministic recall as optimistic. Zero observed escapes is a finite-sample result on 103 critical labels, not a bound.
-- Latency is classifier time only, measured in-process; end-to-end proxy overhead adds HTTP and policy time (sub-millisecond for policy).
-- LFM3 ran on Ollama's MLX backend, which ignores the JSON schema; on platforms with GGUF + grammar enforcement its behavior may differ.
-- Required for each release: rerun all four configs (`--configs all`); CI runs the deterministic privacy gate on every push.
+- The corpus was written alongside the recognizers; deterministic recall is optimistic. Zero escapes on a finite corpus is not a bound.
+- Latency is detection time in-process. Policy evaluation adds well under a millisecond; HTTP and the upstream model dominate end to end.
+- Required for each release: rerun all configurations; CI runs this benchmark with all three model sizes and fails on more than one critical escape or above 2% false blocks.

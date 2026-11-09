@@ -222,7 +222,7 @@
       ],
       "properties": {
         "categories": {
-          "description": "Category IDs. `*` matches all; `CONCEPT:*` all concepts; `EXACT_SECRET:<id>` one secret.",
+          "description": "Category IDs. `*` matches all; `CUSTOM:*` all custom entity types; `EXACT_SECRET:<id>` one secret.",
           "type": "array",
           "items": {
             "type": "string"
