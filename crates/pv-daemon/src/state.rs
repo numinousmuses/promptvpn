@@ -345,7 +345,7 @@ pub fn save_settings(state: &AppState, s: &Settings, actor: &str) -> Result<()> 
 pub fn create_app(state: &AppState, name: &str, agent_id: Option<String>, destination_id: Option<String>) -> Result<(pv_audit::AppRecord, String)> {
     let key = format!("pvk_{}", random_hex(24));
     let rec = pv_audit::AppRecord {
-        app_id: format!("app_{}", &random_hex(6)),
+        app_id: format!("app_{}", random_hex(6)),
         name: name.to_string(),
         key_hash: crate::auth::key_hash(&key),
         agent_id,

@@ -318,12 +318,11 @@ impl Engine {
             if d2.used_approval {
                 // Approval binds to the exact transformed payload.
                 match self.build_payload(&c, &d2, &primary, false) {
-                    Ok((payload, _)) if sha(&serde_json::to_vec(&payload).unwrap()) == p.approved_payload_hash => {
-                        if self.db.consume_approval(&p.approval_id).unwrap_or(false) {
+                    Ok((payload, _)) if sha(&serde_json::to_vec(&payload).unwrap()) == p.approved_payload_hash
+                        && self.db.consume_approval(&p.approval_id).unwrap_or(false) => {
                             decision = d2;
                             used_approval = Some(p.approval_id.clone());
                         }
-                    }
                     _ => {}
                 }
             }

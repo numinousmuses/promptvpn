@@ -104,7 +104,7 @@ pub fn luhn_valid(digits: &str) -> bool {
         sum += d;
         alt = !alt;
     }
-    n >= 2 && sum % 10 == 0
+    n >= 2 && sum.is_multiple_of(10)
 }
 
 pub fn ssn_valid(area: &str, group: &str, serial: &str) -> bool {
@@ -141,7 +141,7 @@ pub fn aba_valid(d: &str) -> bool {
         return false;
     }
     let s = 3 * (v[0] + v[3] + v[6]) + 7 * (v[1] + v[4] + v[7]) + (v[2] + v[5] + v[8]);
-    s % 10 == 0 && s != 0
+    s.is_multiple_of(10) && s != 0
 }
 
 fn card_prefix_known(d: &str) -> bool {

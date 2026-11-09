@@ -890,7 +890,7 @@ async fn near(paths: &Paths, port: u16, j: bool, cmd: NearCmd) -> Result<()> {
                 list().await?
             };
             print(j, &v, |v| {
-                println!("{:<52} {:<15} {}", "model", "privacy tier", "TEE-eligible candidate");
+                println!("{:<52} {:<15} TEE-eligible candidate", "model", "privacy tier");
                 for m in v["models"].as_array().into_iter().flatten() {
                     let cand = m["privacy_tier"] == "PRIVATE_TEE";
                     println!("{:<52} {:<15} {}", m["id"].as_str().unwrap_or(""), m["privacy_tier"].as_str().unwrap_or(""), if cand { "yes (verify before use)" } else { "no" });

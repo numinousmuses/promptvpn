@@ -84,7 +84,7 @@ pub fn apply(fields: &mut [String], findings: &[Finding], decision: &Decision, v
         let category = all.iter().max_by_key(|f| f.sensitivity).map(|f| f.category.clone()).unwrap();
         plans.push((field, start, end, action, category));
     }
-    plans.sort_by(|a, b| (a.0, std::cmp::Reverse(a.1)).cmp(&(b.0, std::cmp::Reverse(b.1))));
+    plans.sort_by_key(|a| (a.0, std::cmp::Reverse(a.1)));
 
     for (field, start, end, action, category) in plans {
         let text = fields.get_mut(field).ok_or(TransformError::BadOffsets)?;
