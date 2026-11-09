@@ -914,7 +914,8 @@ async fn near(paths: &Paths, port: u16, j: bool, cmd: NearCmd) -> Result<()> {
                 if v["eligible"] == true {
                     println!("VERIFIED: {} is eligible for PRIVATE_ROUTE", v["model"].as_str().unwrap_or(""));
                     println!("  gateway signer {} (TCB {}), TLS SPKI {}", v["gateway_signer"].as_str().unwrap_or(""), v["gateway_tcb"].as_str().unwrap_or(""), v["gateway_tls_spki"].as_str().unwrap_or(""));
-                    println!("  model signers {:?} (TCB {:?}), GPU evidence verified, E2EE key present", v["model_signers"], v["model_tcb"]);
+                    let join = |k: &str| v[k].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();
+                    println!("  model signer {} (TCB {}), GPU evidence verified, E2EE key present", join("model_signers"), join("model_tcb"));
                     println!("  verifier: {}", v["verifier"].as_str().unwrap_or(""));
                 } else {
                     println!("NOT ELIGIBLE: {}: {}", v["model"].as_str().unwrap_or(""), v["error"].as_str().unwrap_or(""));
