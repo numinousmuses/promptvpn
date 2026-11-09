@@ -36,8 +36,8 @@ pub struct OutCtx {
     pub scope: String,
     /// Restore placeholders (only for the authorized caller that owns the scope).
     pub restore: bool,
-    /// Run model classifiers on output (forces full buffering).
-    pub semantic: bool,
+    /// Run the span model on output (forces full buffering).
+    pub span_model: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -115,7 +115,7 @@ impl OutCtx {
 
     /// Full (non-incremental) processing, optionally with model classifiers.
     pub async fn process_full(&self, texts: &[String], stats: &mut OutStats) -> Result<Vec<String>, OutputBlocked> {
-        let findings: Vec<Finding> = if self.semantic {
+        let findings: Vec<Finding> = if self.span_model {
             self.detector.detect(texts, true).await.findings
         } else {
             let mut all = Vec::new();
@@ -153,7 +153,7 @@ pub struct TextGuard {
 
 impl TextGuard {
     pub fn new(ctx: Arc<OutCtx>, max_bytes: usize) -> Self {
-        let full_buffer = ctx.semantic;
+        let full_buffer = ctx.span_model;
         TextGuard { ctx, pending: String::new(), context: String::new(), stats: OutStats::default(), full_buffer, max_bytes, total: 0 }
     }
 

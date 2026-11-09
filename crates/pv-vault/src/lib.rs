@@ -438,7 +438,7 @@ impl Vault {
     }
 }
 
-/// Token label for a category: `[[PV_EMAIL_xxxxxxxx]]`, `[[PV_CONCEPT_xxxxxxxx]]`.
+/// Token label for a category: `[[PV_EMAIL_xxxxxxxx]]`, `[[PV_CUSTOM_xxxxxxxx]]`.
 pub fn token_label(category: &str) -> String {
     let base = category.split(':').next().unwrap_or("DATA");
     let l: String = base.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect::<String>().to_ascii_uppercase();
@@ -511,7 +511,7 @@ mod tests {
         let v = vault();
         v.add_secret(ExactKind::Value, "x", "Nightjar-42", NormOpts::default(), false, "BLOCK").unwrap();
         let t = v.token_for("s", "EMAIL", "a@b.co", Duration::hours(1)).unwrap();
-        v.put_sealed("concept", "c1", b"{\"x\":1}").unwrap();
+        v.put_sealed("entity", "c1", b"{\"x\":1}").unwrap();
         v.put_pending_payload("ap1", b"body", Utc::now() + Duration::minutes(15)).unwrap();
         let ev = pv_core::AuditEvent {
             schema_version: 1, event_id: "e".into(), timestamp: Utc::now(), kind: "request".into(), app_id: "a".into(), agent_id: None, user_id: "u".into(),
@@ -526,7 +526,7 @@ mod tests {
         assert_eq!(v.load_exact_entries().unwrap()[0].value.as_str(), "Nightjar-42");
         assert_eq!(v.resolve_token("s", &t).unwrap().unwrap().as_str(), "a@b.co");
         assert_eq!(v.token_for("s", "EMAIL", "a@b.co", Duration::hours(1)).unwrap(), t, "fingerprints recomputed");
-        assert_eq!(&v.get_sealed("concept", "c1").unwrap().unwrap()[..], b"{\"x\":1}");
+        assert_eq!(&v.get_sealed("entity", "c1").unwrap().unwrap()[..], b"{\"x\":1}");
         assert_eq!(&v.get_pending_payload("ap1").unwrap().unwrap()[..], b"body");
         assert_eq!(v.db().verify_chain(&|k| v.audit_mac_key(k)).unwrap(), 1);
         assert!(v.audit_mac_key("k1").is_none(), "old key retired");

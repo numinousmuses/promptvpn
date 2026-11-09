@@ -45,7 +45,7 @@ enum Cmd {
     },
     /// Diagnostics without secrets.
     Doctor,
-    /// Local classifier models.
+    /// Detection model (GLiNER span model, embedded; no Ollama needed).
     Model {
         #[command(subcommand)]
         cmd: ModelCmd,
@@ -70,10 +70,10 @@ enum Cmd {
         #[command(subcommand)]
         cmd: SecretCmd,
     },
-    /// Semantic concepts.
-    Concept {
+    /// Custom entity types found by the detection model (e.g. "insurance policy number").
+    Entity {
         #[command(subcommand)]
-        cmd: ConceptCmd,
+        cmd: EntityCmd,
     },
     /// Audit events (metadata only).
     Events {
@@ -122,20 +122,18 @@ enum Cmd {
         #[arg(long)]
         record: Option<String>,
     },
-    /// Benchmark classifier configurations on a labeled corpus.
+    /// Benchmark detection configurations on a labeled corpus.
     Eval {
         #[arg(long, default_value = "tests/fixtures/eval_corpus.jsonl")]
         corpus: String,
-        /// deterministic, gliner, qwen3guard, lfm3 (comma separated) or all
+        /// deterministic, gliner-edge, gliner-small, gliner-base (comma separated) or all
         #[arg(long, default_value = "deterministic")]
         configs: String,
         #[arg(long)]
         out: Option<String>,
-        #[arg(long, default_value = "http://127.0.0.1:11434")]
-        ollama: String,
-        /// Directory with provisioned GLiNER files.
+        /// Directory containing gliner-pii-<size>/ folders (default: the data dir's models/).
         #[arg(long)]
-        gliner_dir: Option<String>,
+        models_dir: Option<String>,
     },
     /// Export JSON Schemas for all serialized contracts.
     Schema {
@@ -153,11 +151,13 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum ModelCmd {
+    /// Show installed sizes and the active model.
     List,
-    /// Select the generative classifier: qwen3guard | lfm3 | none.
-    Select { kind: String },
-    /// Pull and verify qwen3guard / lfm3 via Ollama, or provision gliner.
-    Install { kind: String },
+    /// Download (pinned, sha256-verified) and activate a size: edge | small | base.
+    Install { size: Option<String> },
+    /// Activate an installed size.
+    Select { size: String },
+    /// Run detection on a synthetic sample (or --text) and show spans.
     Test {
         #[arg(long)]
         text: Option<String>,
@@ -235,23 +235,19 @@ enum SecretCmd {
 }
 
 #[derive(Subcommand)]
-enum ConceptCmd {
+enum EntityCmd {
+    /// Add a type of thing to find, e.g. --label "insurance policy number".
     Add {
         #[arg(long)]
-        name: String,
-        #[arg(long)]
+        label: String,
+        #[arg(long, default_value = "")]
         description: String,
-        #[arg(long = "example")]
-        examples: Vec<String>,
-        #[arg(long = "safe-example")]
-        safe_examples: Vec<String>,
-        #[arg(long, default_value = "BLOCK")]
+        /// TOKENIZE (default, reversible), REDACT, REQUIRE_APPROVAL, BLOCK
+        #[arg(long, default_value = "TOKENIZE")]
         action: String,
     },
     List,
     Remove { id: String },
-    /// Add a free-text guidance note for the local classifier.
-    Guide { text: String },
 }
 
 #[derive(Subcommand)]
@@ -294,7 +290,7 @@ enum ApprovalCmd {
     /// Save a durable rule from a held request.
     SaveRule {
         id: String,
-        /// exact | category | concept | guidance
+        /// exact | category | entity
         #[arg(long)]
         kind: String,
         #[arg(long)]
@@ -513,8 +509,7 @@ async fn run(cli: Cli) -> Result<()> {
                 println!("Prompt VPN {}: {}  ({})", h["version"].as_str().unwrap_or(""), h["status"].as_str().unwrap_or(""), h["base_url"].as_str().unwrap_or(""));
                 println!("  default destination: {}", h["default_destination"]);
                 println!("  NEAR: {}", h["near"]["status"].as_str().unwrap_or(""));
-                println!("  classifier: {}  active={}", h["classifier"]["selected"], h["classifier"]["active"]);
-                println!("  GLiNER loaded: {}", h["span"]["loaded"]);
+                println!("  detection model: {} loaded={}", h["span"]["model"].as_str().unwrap_or(""), h["span"]["loaded"]);
                 println!("  pending approvals: {}", h["pending_approvals"]);
                 for w in h["warnings"].as_array().into_iter().flatten() {
                     println!("  ! {}", w.as_str().unwrap_or(""));
@@ -552,51 +547,29 @@ async fn run(cli: Cli) -> Result<()> {
                 ModelCmd::List => {
                     let v = api.get("/models").await?;
                     print(j, &v, |v| {
-                        println!("Generative classifier (one active): {}  active={}  {}", v["classifier"]["selected"], v["classifier"]["active"], v["classifier"]["error"].as_str().unwrap_or(""));
-                        println!("  qwen3guard: {}  installed={}", v["lock"]["generative"]["qwen3guard"]["ollama_pull"], v["ollama"]["installed"]["qwen3guard"]);
-                        println!("  lfm3:       {}  installed={}", v["lock"]["generative"]["lfm3"]["ollama_pull"], v["ollama"]["installed"]["lfm3"]);
-                        println!("Span model (embedded, not Ollama): GLiNER PII Edge  provisioned={} loaded={}", v["span"]["provisioned"], v["span"]["loaded"]);
+                        println!("Detection model: {}  loaded={}  {}", v["span"]["model"].as_str().unwrap_or(""), v["span"]["loaded"], v["span"]["error"].as_str().unwrap_or(""));
+                        for o in v["options"].as_array().into_iter().flatten() {
+                            println!("  {:<18} {:>5} MB  installed={}  {}", o["model"].as_str().unwrap_or(""), o["size_bytes"].as_u64().unwrap_or(0) / 1_000_000, o["installed"], if o["default"] == true { "(default)" } else { "" });
+                        }
                     });
                 }
-                ModelCmd::Select { kind } => {
-                    let v = api.post("/models/select", json!({"kind": kind})).await?;
-                    print(j, &v, |v| println!("selected {}; active={} {}", v["selected"], v["active"], v["error"].as_str().unwrap_or("")));
+                ModelCmd::Install { size } => {
+                    println!("Downloading pinned GLiNER files from Hugging Face and verifying sha256...");
+                    let v = api.post("/models/install", json!({"model": size})).await?;
+                    print(j, &v, |v| println!("{} installed; loaded={}", v["model"].as_str().unwrap_or(""), v["loaded"]));
                 }
-                ModelCmd::Install { kind } => {
-                    if kind == "gliner" {
-                        println!("Downloading pinned GLiNER PII Edge files from Hugging Face and verifying sha256...");
-                        let v = api.post("/models/gliner/install", json!({})).await?;
-                        print(j, &v, |v| println!("GLiNER provisioned={} loaded={}", v["provisioned"], v["loaded"]));
-                    } else {
-                        let o = api.get("/models").await?;
-                        if o["ollama"]["reachable"] != true {
-                            bail!("Ollama is not running. {}", pv_detectors::ollama::install_instructions(pv_daemon::models::os_name()));
-                        }
-                        let job = api.post("/models/pull", json!({"kind": kind})).await?;
-                        let id = job["job"].as_str().unwrap_or_default().to_string();
-                        loop {
-                            let s = api.get(&format!("/models/jobs/{id}")).await?;
-                            let (c, t) = (s["completed"].as_u64().unwrap_or(0), s["total"].as_u64().unwrap_or(0));
-                            if t > 0 {
-                                eprint!("\r{:<40} {:>6.1}% ", s["status"].as_str().unwrap_or(""), c as f64 * 100.0 / t as f64);
-                            } else {
-                                eprint!("\r{:<48}", s["status"].as_str().unwrap_or(""));
-                            }
-                            if s["done"] == true {
-                                eprintln!();
-                                if let Some(e) = s["error"].as_str() {
-                                    bail!("model install failed: {e}");
-                                }
-                                println!("verified {} ({})", s["model"].as_str().unwrap_or(""), s["verified_digest"].as_str().unwrap_or(""));
-                                break;
-                            }
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        }
-                    }
+                ModelCmd::Select { size } => {
+                    let v = api.post("/models/select", json!({"model": size})).await?;
+                    print(j, &v, |v| println!("{} active; loaded={}", v["model"].as_str().unwrap_or(""), v["loaded"]));
                 }
                 ModelCmd::Test { text } => {
                     let v = api.post("/models/test", json!({"text": text})).await?;
-                    println!("{}", serde_json::to_string_pretty(&v)?);
+                    print(j, &v, |v| {
+                        println!("{} ms (model {} ms)", v["latency_ms"], v["span_latency_ms"]);
+                        for f in v["findings"].as_array().into_iter().flatten() {
+                            println!("  {:<20} {:.2}  {:?}  [{}]", f["category"].as_str().unwrap_or(""), f["confidence"].as_f64().unwrap_or(0.0), f["text"].as_str().unwrap_or(""), f["recognizer"].as_str().unwrap_or(""));
+                        }
+                    });
                 }
             }
         }
@@ -699,28 +672,27 @@ async fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Concept { cmd } => {
+        Cmd::Entity { cmd } => {
             let api = ensure_running(&paths, port).await?;
             match cmd {
-                ConceptCmd::Add { name, description, examples, safe_examples, action } => {
-                    let r = api.post("/concepts", json!({"name": name, "description": description, "sensitive_examples": examples, "safe_examples": safe_examples, "action": parse_action(&action)?})).await?;
-                    println!("added concept {}", r["concept_id"].as_str().unwrap_or(""));
+                EntityCmd::Add { label, description, action } => {
+                    let r = api.post("/entities", json!({"label": label, "description": description, "action": parse_action(&action)?})).await?;
+                    println!("added entity type {}", r["entity_id"].as_str().unwrap_or(""));
+                    if r["span_model_loaded"] != true {
+                        println!("note: the detection model is not loaded, so requests will be held for review until you run `promptvpn model install`");
+                    }
                 }
-                ConceptCmd::List => {
-                    let v = api.get("/concepts").await?;
+                EntityCmd::List => {
+                    let v = api.get("/entities").await?;
                     print(j, &v, |v| {
-                        for c in v["concepts"].as_array().into_iter().flatten() {
-                            println!("  {}  {:<8} {} — {}", c["concept"]["id"].as_str().unwrap_or(""), c["action"].as_str().unwrap_or(""), c["concept"]["name"].as_str().unwrap_or(""), c["concept"]["description"].as_str().unwrap_or(""));
+                        for e in v["entities"].as_array().into_iter().flatten() {
+                            println!("  {}  {:<16} {}", e["entity"]["id"].as_str().unwrap_or(""), e["action"].as_str().unwrap_or(""), e["entity"]["label"].as_str().unwrap_or(""));
                         }
                     });
                 }
-                ConceptCmd::Remove { id } => {
-                    api.delete(&format!("/concepts/{id}")).await?;
+                EntityCmd::Remove { id } => {
+                    api.delete(&format!("/entities/{id}")).await?;
                     println!("removed {id}");
-                }
-                ConceptCmd::Guide { text } => {
-                    let r = api.post("/guidance", json!({"text": text})).await?;
-                    println!("added guidance note {}", r["id"].as_str().unwrap_or(""));
                 }
             }
         }
@@ -861,7 +833,7 @@ async fn run(cli: Cli) -> Result<()> {
             println!("mock upstream at {url} (records exact request bytes)");
             h.await?;
         }
-        Cmd::Eval { corpus, configs, out, ollama, gliner_dir } => eval_cmd(&paths, &corpus, &configs, out, &ollama, gliner_dir).await?,
+        Cmd::Eval { corpus, configs, out, models_dir } => eval_cmd(&paths, &corpus, &configs, out, models_dir).await?,
         Cmd::Schema { out } => {
             std::fs::create_dir_all(&out)?;
             for (n, s) in pv_core::schema::all_schemas() {
@@ -1031,9 +1003,8 @@ async fn approvals(paths: &Paths, port: u16, j: bool, cmd: ApprovalCmd) -> Resul
                     let value = read_secret("Value to register (input hidden): ")?;
                     api.post("/secrets", json!({"label": name.unwrap_or_else(|| format!("from review {id}")), "value": value, "action": parse_action(&action.unwrap_or_else(|| "BLOCK".into()))?})).await?
                 }
-                "concept" => api.post("/concepts", json!({"name": name.context("--name required")?, "description": text.context("--text (description) required")?, "action": parse_action(&action.unwrap_or_else(|| "BLOCK".into()))?})).await?,
-                "guidance" => api.post("/guidance", json!({"text": text.context("--text required")?})).await?,
-                _ => bail!("--kind must be exact, category, concept or guidance"),
+                "entity" => api.post("/entities", json!({"label": name.or(text).context("--name (the entity label) required")?, "action": parse_action(&action.unwrap_or_else(|| "TOKENIZE".into()))?})).await?,
+                _ => bail!("--kind must be exact, category or entity"),
             }
         }
     };
@@ -1077,7 +1048,7 @@ async fn connect_test() -> Result<Value> {
     let rec = std::sync::Arc::new(pv_daemon::mock::Recorded::default());
     let (mock, _) = pv_daemon::mock::serve(0, rec.clone()).await?;
     let st = pv_daemon::state::bootstrap(Paths { data: dir.clone() }, Some(std::sync::Arc::new(pv_proxy::notify::Recorder::default()))).await?;
-    st.engine.detector.set_settings(pv_detectors::DetectorSettings { semantic_mode: pv_detectors::SemanticMode::Off, span_enabled: false, span_required: false, semantic_timeout_ms: 1000 });
+    st.engine.detector.set_settings(pv_detectors::DetectorSettings { span_enabled: false, span_required: false, span_timeout_ms: 1000 });
     let cfg = pv_core::ProviderConfig { schema_version: 1, id: "mock".into(), kind: pv_core::ProviderKind::OpenaiCompatible, display_name: "mock".into(), base_url: mock.clone(), default_model: "mock-echo".into(), declared_tier: pv_core::DestinationTier::ExternalUnverified, credential_ref: None, enabled: true, allow_failover: false, supports_responses: true, timeout_secs: 10 };
     pv_daemon::admin::put_provider_inner(&st, cfg, None).map_err(|_| anyhow!("provider"))?;
     let mut s = st.engine.settings();
@@ -1170,47 +1141,44 @@ async fn clients(paths: &Paths, port: u16, cmd: ClientCmd) -> Result<()> {
     Ok(())
 }
 
-async fn eval_cmd(paths: &Paths, corpus: &str, configs: &str, out: Option<String>, ollama: &str, gliner_dir: Option<String>) -> Result<()> {
+async fn eval_cmd(paths: &Paths, corpus: &str, configs: &str, out: Option<String>, models_dir: Option<String>) -> Result<()> {
     let (cases, meta) = eval::load(corpus)?;
-    let list: Vec<&str> = if configs == "all" { vec!["deterministic", "gliner", "qwen3guard", "lfm3"] } else { configs.split(',').collect() };
+    let list: Vec<&str> = if configs == "all" { vec!["deterministic", "gliner-edge", "gliner-small", "gliner-base"] } else { configs.split(',').collect() };
+    let base = models_dir.map(std::path::PathBuf::from).unwrap_or_else(|| paths.models());
     let mut reports = vec![];
     for c in list {
-        let gdir = gliner_dir.clone().unwrap_or_else(|| paths.models().join("gliner-pii-edge").display().to_string());
-        let span: Option<std::sync::Arc<dyn pv_detectors::span::SpanModel>> = if c == "gliner" { Some(load_gliner(&gdir)?) } else { None };
-        let semantic: Option<std::sync::Arc<dyn pv_detectors::semantic::SemanticClassifier>> = match c {
-            "qwen3guard" | "lfm3" => {
-                let kind = pv_daemon::models::ClassifierKind::parse(c).unwrap();
-                let o = pv_detectors::ollama::Ollama::new(ollama)?;
-                let name = pv_daemon::models::pull_name(kind).unwrap();
-                o.verify_identity(&name, &pv_daemon::models::allowed_digests(kind), &pv_daemon::models::allowed_manifests(kind)).await.map_err(|e| anyhow!("{c}: {e}"))?;
-                let t = std::time::Duration::from_secs(60);
-                Some(if c == "lfm3" { std::sync::Arc::new(pv_detectors::semantic::LfmClassifier { ollama: o, model: name, timeout: t }) } else { std::sync::Arc::new(pv_detectors::semantic::QwenGuardClassifier { ollama: o, model: name, timeout: t }) })
+        let span: Option<std::sync::Arc<dyn pv_detectors::span::SpanModel>> = match c {
+            "deterministic" => None,
+            x if x.starts_with("gliner-") => {
+                let name = pv_daemon::models::resolve_name(x.trim_start_matches("gliner-")).ok_or_else(|| anyhow!("unknown config {x}"))?;
+                Some(load_gliner(&base.join(&name).display().to_string(), &name)?)
             }
-            "deterministic" | "gliner" => None,
             other => bail!("unknown config {other}"),
         };
         eprintln!("evaluating {c} on {} cases...", cases.len());
-        reports.push(eval::run(c, &cases, &meta, span, semantic).await);
+        reports.push(eval::run(c, &cases, &meta, span).await);
     }
     let md = eval::markdown(&reports);
     println!("{md}");
     if let Some(o) = out {
         std::fs::write(&o, serde_json::to_string_pretty(&reports)?)?;
-        std::fs::write(format!("{o}.md"), md)?;
-        eprintln!("wrote {o} and {o}.md");
+        std::fs::write(o.replace(".json", ".md"), md)?;
+        eprintln!("wrote {o}");
     }
     Ok(())
 }
 
 #[cfg(feature = "gliner")]
-fn load_gliner(dir: &str) -> Result<std::sync::Arc<dyn pv_detectors::span::SpanModel>> {
-    let thr = pv_daemon::models::lock()["span"]["gliner-pii-edge"]["threshold"].as_f64().unwrap_or(0.5) as f32;
-    let tok = format!("{dir}/tokenizer.json");
+fn load_gliner(dir: &str, name: &str) -> Result<std::sync::Arc<dyn pv_detectors::span::SpanModel>> {
+    let l = pv_daemon::models::lock();
+    let g = &l["span"][name];
+    let thr = g["threshold"].as_f64().unwrap_or(0.5) as f32;
+    let mode = g["span_mode"].as_str().unwrap_or("token_level");
     let onnx = if std::path::Path::new(&format!("{dir}/model.onnx")).exists() { format!("{dir}/model.onnx") } else { format!("{dir}/model_quint8.onnx") };
-    Ok(std::sync::Arc::new(pv_detectors::span::gliner_impl::GlinerModel::load(&tok, &onnx, thr, "gliner-pii-edge@9b7f39b").map_err(|e| anyhow!(e))?))
+    Ok(std::sync::Arc::new(pv_detectors::span::gliner_impl::GlinerModel::load(&format!("{dir}/tokenizer.json"), &onnx, thr, name, mode).map_err(|e| anyhow!(e))?))
 }
 
 #[cfg(not(feature = "gliner"))]
-fn load_gliner(_dir: &str) -> Result<std::sync::Arc<dyn pv_detectors::span::SpanModel>> {
+fn load_gliner(_dir: &str, _name: &str) -> Result<std::sync::Arc<dyn pv_detectors::span::SpanModel>> {
     bail!("built without the gliner feature")
 }

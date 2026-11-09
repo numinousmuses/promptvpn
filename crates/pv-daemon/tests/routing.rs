@@ -27,8 +27,8 @@ async fn add_near(h: &H, model: &str, eligible: bool) -> Near {
 }
 
 fn require_semantic(h: &H) {
-    // Missing classifier → CLASSIFIER_FAILURE (an uncertain, noncritical finding).
-    h.st.engine.detector.set_settings(pv_detectors::DetectorSettings { semantic_mode: pv_detectors::SemanticMode::Always, span_enabled: false, span_required: false, semantic_timeout_ms: 300 });
+    // Required span model missing → CLASSIFIER_FAILURE (an uncertain, noncritical finding).
+    h.st.engine.detector.set_settings(pv_detectors::DetectorSettings { span_enabled: true, span_required: true, span_timeout_ms: 300 });
 }
 
 fn set(h: &H, f: impl FnOnce(&mut pv_proxy::Settings)) {

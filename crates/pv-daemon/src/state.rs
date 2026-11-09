@@ -1,10 +1,10 @@
 //! Daemon state: paths, bootstrap from SQLite + vault, live reconfiguration.
 
-use crate::models::{ClassifierKind, ClassifierSelection, ModelManager};
+use crate::models::{ModelManager, SpanSelection};
 use anyhow::{anyhow, Context, Result};
 use pv_audit::{Db, JsonTable};
 use pv_core::*;
-use pv_detectors::semantic::Concept;
+use pv_detectors::span::CustomEntity;
 use pv_detectors::{Detector, DetectorSettings};
 use pv_provider::{CredentialFn, Registry};
 use pv_proxy::notify::{Desktop, NotificationSettings, Notifier, RateLimited, Recorder};
@@ -108,18 +108,11 @@ fn sha2_digest(b: &[u8]) -> Vec<u8> {
     sha2::Sha256::digest(b).to_vec()
 }
 
-/// Concept stored in the vault (sealed) together with its policy action.
+/// Owner-defined entity type stored in the vault (sealed) with its policy action.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StoredConcept {
-    pub concept: Concept,
+pub struct StoredEntity {
+    pub entity: CustomEntity,
     pub action: Action,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GuidanceNote {
-    pub id: String,
-    pub text: String,
     pub created_at: String,
 }
 
@@ -250,11 +243,10 @@ pub async fn bootstrap(paths: Paths, notifier: Option<Arc<dyn Notifier>>) -> Res
         shutdown: tokio::sync::Notify::new(),
         creds,
     });
-    reload_concepts(&state)?;
+    reload_entities(&state)?;
     reload_providers(&state)?;
-    let sel: ClassifierSelection = state.engine.db.setting("classifier")?.unwrap_or_default();
-    state.models.apply_selection(&sel).await;
-    state.models.load_span_model();
+    let sel: SpanSelection = state.engine.db.setting("span_model")?.unwrap_or_default();
+    apply_span(&state, &sel.model);
     state.engine.housekeeping();
     Ok(state)
 }
@@ -283,26 +275,29 @@ impl AppState {
     }
 }
 
-pub fn concepts(state: &AppState) -> Result<Vec<StoredConcept>> {
+pub fn entities(state: &AppState) -> Result<Vec<StoredEntity>> {
     let mut out = Vec::new();
-    for (_, b) in state.vault().list_sealed("concept")? {
+    for (_, b) in state.vault().list_sealed("entity")? {
         out.push(serde_json::from_slice(&b)?);
     }
     Ok(out)
 }
 
-pub fn guidance(state: &AppState) -> Result<Vec<GuidanceNote>> {
-    let mut out = Vec::new();
-    for (_, b) in state.vault().list_sealed("guidance")? {
-        out.push(serde_json::from_slice(&b)?);
-    }
-    Ok(out)
-}
-
-pub fn reload_concepts(state: &AppState) -> Result<()> {
-    state.engine.detector.set_concepts(concepts(state)?.into_iter().map(|c| c.concept).collect());
-    state.engine.detector.set_guidance(guidance(state)?.into_iter().map(|g| g.text).collect());
+pub fn reload_entities(state: &AppState) -> Result<()> {
+    state.engine.detector.set_entities(entities(state)?.into_iter().map(|e| e.entity).collect());
     Ok(())
+}
+
+/// Load the span model. Once a model is installed it is required: if it later
+/// fails to load or run, requests fail closed (CLASSIFIER_FAILURE) instead of
+/// silently losing detection.
+pub fn apply_span(state: &AppState, model: &str) -> bool {
+    let loaded = state.models.load(model);
+    let installed = state.models.provisioned(model).is_ok();
+    let mut ds = state.engine.detector.settings();
+    ds.span_required = installed;
+    state.engine.detector.set_settings(ds);
+    loaded
 }
 
 pub fn reload_policy(state: &AppState) -> Result<()> {
@@ -349,12 +344,4 @@ pub fn create_app(state: &AppState, name: &str, agent_id: Option<String>, destin
     };
     state.db().put_app(&rec)?;
     Ok((rec, key))
-}
-
-pub fn classifier_kind_label(k: ClassifierKind) -> &'static str {
-    match k {
-        ClassifierKind::None => "none",
-        ClassifierKind::Qwen3guard => "qwen3guard",
-        ClassifierKind::Lfm3 => "lfm3",
-    }
 }

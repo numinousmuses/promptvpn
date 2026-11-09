@@ -1,47 +1,35 @@
-//! Detection pipeline: built-in recognizers, exact values, encoded views,
-//! GLiNER spans and the local semantic classifier.
+//! Detection pipeline: deterministic recognizers, owner-registered exact
+//! values, decoded/Unicode-folded views, and the GLiNER span model (built-in
+//! labels plus owner-defined entity types). Every finding is an exact span.
 
 pub mod builtin;
 pub mod encoded;
 pub mod exact;
 pub mod normalize;
 pub mod ollama;
-pub mod semantic;
 pub mod span;
 
 use pv_core::category::{self, CLASSIFIER_FAILURE};
 use pv_core::{ClassifierType, Finding, Sensitivity};
-use semantic::{Concept, Segment, SemanticClassifier};
 use serde::{Deserialize, Serialize};
-use span::SpanModel;
+use span::{CustomEntity, SpanModel};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SemanticMode {
-    /// Never call the generative classifier.
-    Off,
-    /// Call it only when semantic concepts are configured.
-    WhenConcepts,
-    /// Call it on every inbound request.
-    #[default]
-    Always,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DetectorSettings {
-    pub semantic_mode: SemanticMode,
-    /// Run the GLiNER span model when one is loaded.
+    /// Run the span model when one is loaded.
     pub span_enabled: bool,
-    /// If true, a missing/failed span model is a classifier failure (fail closed).
+    /// A missing or failing span model is a classifier failure (fail closed).
+    /// Always true while custom entity types exist, since only the model finds them.
     pub span_required: bool,
-    pub semantic_timeout_ms: u64,
+    pub span_timeout_ms: u64,
 }
 
 impl Default for DetectorSettings {
     fn default() -> Self {
-        DetectorSettings { semantic_mode: SemanticMode::Always, span_enabled: true, span_required: false, semantic_timeout_ms: 15_000 }
+        DetectorSettings { span_enabled: true, span_required: false, span_timeout_ms: 10_000 }
     }
 }
 
@@ -50,20 +38,15 @@ pub struct DetectionReport {
     pub findings: Vec<Finding>,
     pub recognizer_versions: Vec<String>,
     pub failures: Vec<String>,
-    pub semantic_latency_ms: Option<u64>,
     pub span_latency_ms: Option<u64>,
-    pub semantic_tokens_per_sec: Option<f64>,
-    pub injection_suspected: bool,
 }
 
-/// Thread-safe detector shared by all requests. Components are swapped atomically
-/// when the owner edits secrets, concepts or the selected model.
+/// Shared by all requests. Components are swapped atomically when the owner
+/// edits secrets, custom entity types or the model.
 pub struct Detector {
     pub exact: RwLock<Arc<exact::ExactMatcher>>,
     pub span: RwLock<Option<Arc<dyn SpanModel>>>,
-    pub semantic: RwLock<Option<Arc<dyn SemanticClassifier>>>,
-    pub concepts: RwLock<Arc<Vec<Concept>>>,
-    pub guidance: RwLock<Arc<Vec<String>>>,
+    pub entities: RwLock<Arc<Vec<CustomEntity>>>,
     pub settings: RwLock<DetectorSettings>,
 }
 
@@ -72,9 +55,7 @@ impl Default for Detector {
         Detector {
             exact: RwLock::new(Arc::new(exact::ExactMatcher::default())),
             span: RwLock::new(None),
-            semantic: RwLock::new(None),
-            concepts: RwLock::new(Arc::new(vec![])),
-            guidance: RwLock::new(Arc::new(vec![])),
+            entities: RwLock::new(Arc::new(vec![])),
             settings: RwLock::new(DetectorSettings::default()),
         }
     }
@@ -121,7 +102,7 @@ fn detect_det_depth(text: &str, exact: &exact::ExactMatcher, depth: u8) -> Vec<F
 }
 
 fn failure(field_index: usize, len: usize, what: &str) -> Finding {
-    let mut f = Finding::new(ClassifierType::Semantic, CLASSIFIER_FAILURE, 0, len, 1.0, what, "classifier-failure", Sensitivity::High);
+    let mut f = Finding::new(ClassifierType::Builtin, CLASSIFIER_FAILURE, 0, len, 1.0, what, "classifier-failure", Sensitivity::High);
     f.field_index = field_index;
     f.whole_field = true;
     f
@@ -131,17 +112,17 @@ impl Detector {
     pub fn set_exact(&self, m: exact::ExactMatcher) {
         *self.exact.write().unwrap() = Arc::new(m);
     }
-    pub fn set_concepts(&self, c: Vec<Concept>) {
-        *self.concepts.write().unwrap() = Arc::new(c);
+    pub fn set_entities(&self, e: Vec<CustomEntity>) {
+        *self.entities.write().unwrap() = Arc::new(e);
     }
-    pub fn set_guidance(&self, g: Vec<String>) {
-        *self.guidance.write().unwrap() = Arc::new(g);
-    }
-    pub fn set_semantic(&self, s: Option<Arc<dyn SemanticClassifier>>) {
-        *self.semantic.write().unwrap() = s;
+    pub fn entities(&self) -> Arc<Vec<CustomEntity>> {
+        self.entities.read().unwrap().clone()
     }
     pub fn set_span(&self, s: Option<Arc<dyn SpanModel>>) {
         *self.span.write().unwrap() = s;
+    }
+    pub fn span_loaded(&self) -> bool {
+        self.span.read().unwrap().is_some()
     }
     pub fn set_settings(&self, s: DetectorSettings) {
         *self.settings.write().unwrap() = s;
@@ -150,11 +131,12 @@ impl Detector {
         self.settings.read().unwrap().clone()
     }
 
-    /// Detect over all fields. `semantic` controls whether model classifiers run
-    /// (outbound inspection uses deterministic + span only unless policy needs more).
-    pub async fn detect(&self, fields: &[String], use_models: bool) -> DetectionReport {
+    /// Detect over all fields. `use_model` runs the span model (inbound always;
+    /// outbound only when the owner enables it).
+    pub async fn detect(&self, fields: &[String], use_model: bool) -> DetectionReport {
         let exact = self.exact.read().unwrap().clone();
         let settings = self.settings();
+        let entities = self.entities();
         let mut rep = DetectionReport { recognizer_versions: vec![builtin::VERSION.into()], ..Default::default() };
         if !exact.is_empty() {
             rep.recognizer_versions.push("exact-v1".into());
@@ -166,99 +148,48 @@ impl Detector {
             }
         }
         let nonempty: Vec<usize> = (0..fields.len()).filter(|&i| !fields[i].trim().is_empty()).collect();
-        if !use_models || nonempty.is_empty() {
+        if !use_model || nonempty.is_empty() {
             return rep;
         }
-
-        // Span model (GLiNER) on a blocking thread.
-        let span = self.span.read().unwrap().clone();
-        if settings.span_enabled {
-            match span {
-                Some(model) => {
-                    rep.recognizer_versions.push(model.id());
-                    let t = Instant::now();
-                    let texts: Vec<(usize, String)> = nonempty.iter().map(|&i| (i, fields[i].clone())).collect();
-                    let m = model.clone();
-                    let res = tokio::task::spawn_blocking(move || {
-                        let mut out = Vec::new();
-                        for (i, t) in texts {
-                            for mut f in m.detect(&t)? {
-                                if f.validate_against(&t).is_ok() {
-                                    f.field_index = i;
-                                    out.push(f);
-                                }
+        let required = settings.span_required || !entities.is_empty();
+        let last = *nonempty.last().unwrap();
+        let model = if settings.span_enabled { self.span.read().unwrap().clone() } else { None };
+        match model {
+            Some(model) => {
+                rep.recognizer_versions.push(model.id());
+                let t = Instant::now();
+                let texts: Vec<(usize, String)> = nonempty.iter().map(|&i| (i, fields[i].clone())).collect();
+                let ents = entities.clone();
+                let job = tokio::task::spawn_blocking(move || {
+                    let mut out = Vec::new();
+                    for (i, t) in texts {
+                        for mut f in model.detect(&t, &ents)? {
+                            if f.validate_against(&t).is_ok() {
+                                f.field_index = i;
+                                out.push(f);
                             }
-                        }
-                        Ok::<_, String>(out)
-                    })
-                    .await;
-                    rep.span_latency_ms = Some(t.elapsed().as_millis() as u64);
-                    match res {
-                        Ok(Ok(f)) => rep.findings.extend(f),
-                        _ => {
-                            rep.failures.push("span-model".into());
-                            let last = *nonempty.last().unwrap();
-                            rep.findings.push(failure(last, fields[last].len(), "gliner-failure"));
                         }
                     }
-                }
-                None if settings.span_required => {
-                    rep.failures.push("span-model-missing".into());
-                    let last = *nonempty.last().unwrap();
-                    rep.findings.push(failure(last, fields[last].len(), "gliner-missing"));
-                }
-                None => {}
-            }
-        }
-
-        // Semantic classifier.
-        let concepts = self.concepts.read().unwrap().clone();
-        let guidance = self.guidance.read().unwrap().clone();
-        let run_semantic = match settings.semantic_mode {
-            SemanticMode::Off => false,
-            SemanticMode::WhenConcepts => !concepts.is_empty(),
-            SemanticMode::Always => true,
-        };
-        if run_semantic {
-            let classifier = self.semantic.read().unwrap().clone();
-            let last = *nonempty.last().unwrap();
-            match classifier {
-                None => {
-                    // Required but not installed/selected: fail closed.
-                    rep.failures.push("semantic-classifier-missing".into());
-                    rep.findings.push(failure(last, fields[last].len(), "semantic-missing"));
-                }
-                Some(c) => {
-                    rep.recognizer_versions.push(c.id());
-                    let segs: Vec<Segment> = nonempty.iter().map(|&i| Segment { field_index: i, text: &fields[i] }).collect();
-                    let timeout = Duration::from_millis(settings.semantic_timeout_ms);
-                    match tokio::time::timeout(timeout, c.classify(&segs, &concepts, &guidance)).await {
-                        Ok(Ok(out)) => {
-                            rep.semantic_latency_ms = Some(out.latency_ms);
-                            let tps = out.stats.tokens_per_sec();
-                            if tps > 0.0 {
-                                rep.semantic_tokens_per_sec = Some(tps);
-                            }
-                            rep.injection_suspected = out.injection_suspected;
-                            for f in out.findings {
-                                let ok = fields.get(f.field_index).is_some_and(|t| f.validate_against(t).is_ok());
-                                if ok {
-                                    rep.findings.push(f);
-                                }
-                            }
-                        }
-                        _ => {
-                            rep.failures.push("semantic-classifier".into());
-                            rep.findings.push(failure(last, fields[last].len(), "semantic-failure"));
+                    Ok::<_, String>(out)
+                });
+                let res = tokio::time::timeout(Duration::from_millis(settings.span_timeout_ms), job).await;
+                rep.span_latency_ms = Some(t.elapsed().as_millis() as u64);
+                match res {
+                    Ok(Ok(Ok(f))) => rep.findings.extend(f),
+                    _ => {
+                        rep.failures.push("span-model".into());
+                        if required {
+                            rep.findings.push(failure(last, fields[last].len(), "span-model-failure"));
                         }
                     }
                 }
             }
+            None if required => {
+                rep.failures.push("span-model-missing".into());
+                rep.findings.push(failure(last, fields[last].len(), "span-model-missing"));
+            }
+            None => {}
         }
-        // A model's whole-field "possibly sensitive" judgement is redundant when
-        // localized recognizers already found personal data in that field.
-        let localized: Vec<usize> = rep.findings.iter().filter(|f| !f.whole_field && f.classifier_type == ClassifierType::Builtin).map(|f| f.field_index).collect();
-        rep.findings.retain(|f| !(f.category == category::UNCERTAIN && f.whole_field && localized.contains(&f.field_index)));
         rep.findings = builtin::dedupe(std::mem::take(&mut rep.findings));
         rep
     }
@@ -273,6 +204,7 @@ pub fn has_critical(findings: &[Finding]) -> bool {
 mod tests {
     use super::*;
     use exact::{ExactEntry, ExactKind, ExactMatcher};
+    use span::KeywordSpans;
     use zeroize::Zeroizing;
 
     #[test]
@@ -294,37 +226,61 @@ mod tests {
         assert!(f.iter().any(|f| f.category == "GOVERNMENT_ID"));
     }
 
-    #[tokio::test]
-    async fn semantic_missing_fails_closed() {
-        let d = Detector::default();
-        let r = d.detect(&["hello".into()], true).await;
-        assert!(r.findings.iter().any(|f| f.category == CLASSIFIER_FAILURE));
+    fn ent() -> CustomEntity {
+        CustomEntity { id: "ent_1".into(), label: "policy number".into(), description: String::new() }
     }
 
     #[tokio::test]
-    async fn semantic_failure_fails_closed() {
+    async fn optional_model_missing_is_fine() {
         let d = Detector::default();
-        d.set_semantic(Some(Arc::new(semantic::FailingClassifier)));
-        let r = d.detect(&["hello".into()], true).await;
-        assert!(r.findings.iter().any(|f| f.category == CLASSIFIER_FAILURE));
-        assert_eq!(r.failures, vec!["semantic-classifier"]);
-    }
-
-    #[tokio::test]
-    async fn semantic_off_skips() {
-        let d = Detector::default();
-        d.set_settings(DetectorSettings { semantic_mode: SemanticMode::Off, ..Default::default() });
         let r = d.detect(&["hello".into()], true).await;
         assert!(r.findings.is_empty());
     }
 
     #[tokio::test]
-    async fn keyword_concepts() {
+    async fn required_model_missing_fails_closed() {
         let d = Detector::default();
-        d.set_semantic(Some(Arc::new(semantic::KeywordClassifier)));
-        d.set_concepts(vec![Concept { id: "c1".into(), name: "n".into(), description: "d".into(), safe_examples: vec![], sensitive_examples: vec!["nightjar".into()] }]);
-        let r = d.detect(&["sys".into(), "about Nightjar".into()], true).await;
-        let f = r.findings.iter().find(|f| f.category == "CONCEPT:c1").unwrap();
+        d.set_settings(DetectorSettings { span_required: true, ..Default::default() });
+        let r = d.detect(&["hello".into()], true).await;
+        assert!(r.findings.iter().any(|f| f.category == CLASSIFIER_FAILURE));
+    }
+
+    #[tokio::test]
+    async fn custom_entities_require_the_model() {
+        let d = Detector::default();
+        d.set_entities(vec![ent()]);
+        let r = d.detect(&["policy number: P-77".into()], true).await;
+        assert!(r.findings.iter().any(|f| f.category == CLASSIFIER_FAILURE));
+    }
+
+    #[tokio::test]
+    async fn model_failure_fails_closed_when_required() {
+        let d = Detector::default();
+        d.set_span(Some(Arc::new(KeywordSpans { builtin: vec![], fail: true })));
+        d.set_settings(DetectorSettings { span_required: true, ..Default::default() });
+        let r = d.detect(&["hello".into()], true).await;
+        assert!(r.findings.iter().any(|f| f.category == CLASSIFIER_FAILURE));
+        assert_eq!(r.failures, vec!["span-model"]);
+    }
+
+    #[tokio::test]
+    async fn custom_entity_spans() {
+        let d = Detector::default();
+        d.set_span(Some(Arc::new(KeywordSpans { builtin: vec![], fail: false })));
+        d.set_entities(vec![ent()]);
+        let t = "renew policy number: PX-4471 today".to_string();
+        let r = d.detect(&["sys".into(), t.clone()], true).await;
+        let f = r.findings.iter().find(|f| f.category == "CUSTOM:ent_1").unwrap();
         assert_eq!(f.field_index, 1);
+        assert_eq!(&t[f.start_byte..f.end_byte], "PX-4471");
+        assert_eq!(f.entity_id.as_deref(), Some("ent_1"));
+    }
+
+    #[tokio::test]
+    async fn model_skipped_when_not_requested() {
+        let d = Detector::default();
+        d.set_span(Some(Arc::new(KeywordSpans { builtin: vec![("maria".into(), category::PERSON)], fail: false })));
+        assert!(d.detect(&["maria".into()], false).await.findings.is_empty());
+        assert_eq!(d.detect(&["maria".into()], true).await.findings.len(), 1);
     }
 }

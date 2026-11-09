@@ -1,8 +1,8 @@
 //! Authenticated admin API at /api/admin/v1.
 
 use crate::auth;
-use crate::models::{ClassifierKind, ClassifierSelection};
-use crate::state::{self, AppState, GuidanceNote, OnboardingState, StoredConcept};
+use crate::models::SpanSelection;
+use crate::state::{self, AppState, OnboardingState, StoredEntity};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -14,7 +14,7 @@ use pv_core::category;
 use pv_core::*;
 use pv_detectors::exact::ExactKind;
 use pv_detectors::normalize::NormOpts;
-use pv_detectors::semantic::Concept;
+use pv_detectors::span::{normalize_label, CustomEntity};
 use pv_detectors::DetectorSettings;
 use pv_proxy::notify::NotificationSettings;
 use serde::Deserialize;
@@ -93,10 +93,8 @@ pub fn router(st: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/categories/{id}", put(set_category))
         .route("/secrets", get(secrets).post(add_secret))
         .route("/secrets/{id}", delete(remove_secret))
-        .route("/concepts", get(list_concepts).post(add_concept))
-        .route("/concepts/{id}", delete(remove_concept))
-        .route("/guidance", get(list_guidance).post(add_guidance))
-        .route("/guidance/{id}", delete(remove_guidance))
+        .route("/entities", get(list_entities).post(add_entity))
+        .route("/entities/{id}", delete(remove_entity))
         .route("/apps", get(apps).post(add_app))
         .route("/apps/{id}", delete(revoke_app).patch(patch_app))
         .route("/providers", get(providers).post(put_provider))
@@ -106,9 +104,7 @@ pub fn router(st: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/near/verify", post(near_verify))
         .route("/models", get(models))
         .route("/models/select", post(select_model))
-        .route("/models/pull", post(pull_model))
-        .route("/models/jobs/{id}", get(job))
-        .route("/models/gliner/install", post(install_gliner))
+        .route("/models/install", post(install_model))
         .route("/models/test", post(test_model))
         .route("/approvals", get(approvals))
         .route("/approvals/{id}", get(approval))
@@ -292,7 +288,7 @@ struct TestReq {
     destination_id: Option<String>,
     #[serde(default)]
     direction: Direction,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     use_models: bool,
 }
 
@@ -390,6 +386,9 @@ struct AddSecret {
     #[serde(default)]
     allow: bool,
 }
+fn default_true() -> bool {
+    true
+}
 fn default_kind() -> ExactKind {
     ExactKind::Value
 }
@@ -451,100 +450,71 @@ async fn remove_secret(State(st): St, Path(id): Path<String>) -> R {
     Ok(Json(json!({"ok": true})))
 }
 
-// ------------------------------------------------------------------ concepts & guidance
+// ------------------------------------------------------------------ custom entity types
 
-async fn list_concepts(State(st): St) -> R {
-    Ok(Json(json!({"concepts": state::concepts(&st)?})))
+async fn list_entities(State(st): St) -> R {
+    Ok(Json(json!({"entities": state::entities(&st)?, "span_model_loaded": st.engine.detector.span_loaded()})))
 }
 
 #[derive(Deserialize)]
-pub struct AddConcept {
-    pub name: String,
+pub struct AddEntity {
+    /// What to look for, in plain words, e.g. "insurance policy number".
+    pub label: String,
+    #[serde(default)]
     pub description: String,
-    #[serde(default)]
-    pub safe_examples: Vec<String>,
-    #[serde(default)]
-    pub sensitive_examples: Vec<String>,
-    #[serde(default = "default_block")]
+    #[serde(default = "default_tokenize")]
     pub action: Action,
 }
 
-pub fn add_concept_inner(st: &AppState, c: AddConcept) -> Result<String, ApiErr> {
-    if c.name.trim().is_empty() || c.description.trim().is_empty() {
-        return Err(bad("name and description are required"));
+fn default_tokenize() -> Action {
+    Action::Tokenize
+}
+
+pub fn add_entity_inner(st: &AppState, e: AddEntity) -> Result<String, ApiErr> {
+    let label = normalize_label(&e.label).ok_or_else(|| bad("label must be 2..60 letters, digits or spaces"))?;
+    if pv_detectors::span::GLINER_LABELS.iter().any(|(l, _)| *l == label) {
+        return Err(bad(format!("'{label}' is already a built-in category")));
     }
-    if matches!(c.action, Action::Tokenize | Action::Redact | Action::Generalize) {
-        // Allowed, but only applies when the classifier can isolate evidence spans.
+    if state::entities(st)?.iter().any(|x| x.entity.label == label) {
+        return Err(bad(format!("'{label}' already exists")));
     }
-    let id = format!("con_{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
-    let sc = StoredConcept {
-        concept: Concept { id: id.clone(), name: c.name.clone(), description: c.description, safe_examples: c.safe_examples, sensitive_examples: c.sensitive_examples },
-        action: c.action,
-        created_at: Utc::now().to_rfc3339(),
-    };
-    st.vault().put_sealed("concept", &id, &serde_json::to_vec(&sc)?)?;
+    let id = format!("ent_{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
+    let se = StoredEntity { entity: CustomEntity { id: id.clone(), label: label.clone(), description: e.description }, action: e.action, created_at: Utc::now().to_rfc3339() };
+    st.vault().put_sealed("entity", &id, &serde_json::to_vec(&se)?)?;
     let rule = PolicyRule {
         schema_version: 1,
-        id: format!("concept-{id}"),
+        id: format!("entity-{id}"),
         version: 1,
         scope: Scope { kind: ScopeKind::User, id: "local-owner".into() },
-        selector: Selector { categories: vec![format!("CONCEPT:{id}")], destinations: vec!["external".into()], direction: Direction::Inbound, min_confidence: None },
-        action: c.action,
+        selector: Selector { categories: vec![format!("CUSTOM:{id}")], destinations: vec!["external".into()], direction: Direction::Inbound, min_confidence: None },
+        action: e.action,
         severity: Sensitivity::High,
         notify: vec!["local_user".into()],
         override_mode: OverrideMode::PolicyOwnerOnly,
         retention_days: 30,
         enabled: true,
-        description: format!("Semantic concept '{}'", c.name),
+        description: format!("Custom entity type '{label}'"),
         origin: "owner".into(),
         critical_exception: false,
     };
     store_rule(st, rule, "owner")?;
-    state::reload_concepts(st)?;
-    owner_event(st, "concept", "CONCEPT_ADD", &format!("Added semantic concept '{}' ({})", c.name, c.action.as_str()), vec![format!("CONCEPT:{id}")], Sensitivity::Moderate);
+    state::reload_entities(st)?;
+    owner_event(st, "entity", "ENTITY_ADD", &format!("Added custom entity type '{label}' ({})", e.action.as_str()), vec![format!("CUSTOM:{id}")], Sensitivity::Moderate);
     Ok(id)
 }
 
-async fn add_concept(State(st): St, Json(c): Json<AddConcept>) -> R {
-    Ok(Json(json!({"concept_id": add_concept_inner(&st, c)?})))
+async fn add_entity(State(st): St, Json(e): Json<AddEntity>) -> R {
+    Ok(Json(json!({"entity_id": add_entity_inner(&st, e)?, "span_model_loaded": st.engine.detector.span_loaded()})))
 }
 
-async fn remove_concept(State(st): St, Path(id): Path<String>) -> R {
-    if !st.vault().delete_sealed("concept", &id)? {
-        return Err(ApiErr(StatusCode::NOT_FOUND, "no such concept".into()));
+async fn remove_entity(State(st): St, Path(id): Path<String>) -> R {
+    if !st.vault().delete_sealed("entity", &id)? {
+        return Err(ApiErr(StatusCode::NOT_FOUND, "no such entity type".into()));
     }
-    let _ = st.db().deactivate_policy(&format!("concept-{id}"));
+    let _ = st.db().deactivate_policy(&format!("entity-{id}"));
     state::reload_policy(&st)?;
-    state::reload_concepts(&st)?;
-    owner_event(&st, "concept", "CONCEPT_REMOVE", &format!("Removed concept {id}"), vec![], Sensitivity::Moderate);
-    Ok(Json(json!({"ok": true})))
-}
-
-async fn list_guidance(State(st): St) -> R {
-    Ok(Json(json!({"guidance": state::guidance(&st)?})))
-}
-
-#[derive(Deserialize)]
-struct AddGuidance {
-    text: String,
-}
-
-async fn add_guidance(State(st): St, Json(g): Json<AddGuidance>) -> R {
-    let text = g.text.trim().to_string();
-    if text.is_empty() || text.len() > 1000 {
-        return Err(bad("guidance must be 1..1000 characters"));
-    }
-    let id = format!("gn_{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
-    let n = GuidanceNote { id: id.clone(), text, created_at: Utc::now().to_rfc3339() };
-    st.vault().put_sealed("guidance", &id, &serde_json::to_vec(&n)?)?;
-    state::reload_concepts(&st)?;
-    owner_event(&st, "concept", "GUIDANCE_ADD", "Added a classifier guidance note", vec![], Sensitivity::Low);
-    Ok(Json(json!({"id": id})))
-}
-
-async fn remove_guidance(State(st): St, Path(id): Path<String>) -> R {
-    st.vault().delete_sealed("guidance", &id)?;
-    state::reload_concepts(&st)?;
+    state::reload_entities(&st)?;
+    owner_event(&st, "entity", "ENTITY_REMOVE", &format!("Removed custom entity type {id}"), vec![], Sensitivity::Moderate);
     Ok(Json(json!({"ok": true})))
 }
 
@@ -738,62 +708,63 @@ async fn near_verify(State(st): St, Json(v): Json<VerifyReq>) -> R {
 // ------------------------------------------------------------------ local models
 
 async fn models(State(st): St) -> R {
-    let sel: ClassifierSelection = st.db().setting("classifier")?.unwrap_or_default();
-    let ollama = st.models.ollama_status(&sel.ollama_url).await;
+    let sel: SpanSelection = st.db().setting("span_model")?.unwrap_or_default();
     let mut v = st.models.status();
     v["selection"] = json!(sel);
-    v["ollama"] = ollama;
     v["detector"] = json!(st.engine.detector.settings());
+    v["ollama"] = ollama_status().await;
     Ok(Json(v))
+}
+
+/// Ollama is only an optional local generation destination now.
+async fn ollama_status() -> Value {
+    match pv_detectors::ollama::Ollama::new("http://127.0.0.1:11434") {
+        Ok(o) => match o.version().await {
+            Ok(v) => json!({"reachable": true, "version": v, "models": o.tags().await.unwrap_or_default().into_iter().map(|t| t.name).collect::<Vec<_>>()}),
+            Err(_) => json!({"reachable": false, "install": pv_detectors::ollama::install_instructions(crate::models::os_name())}),
+        },
+        Err(e) => json!({"reachable": false, "error": e.to_string()}),
+    }
 }
 
 #[derive(Deserialize)]
 struct SelectModel {
-    kind: String,
-    ollama_url: Option<String>,
+    model: String,
 }
 
-pub async fn select_model_inner(st: &AppState, kind: ClassifierKind, url: Option<String>) -> Result<Value, ApiErr> {
-    let mut sel: ClassifierSelection = st.db().setting("classifier")?.unwrap_or_default();
-    sel.kind = kind;
-    if let Some(u) = url {
-        if !pv_detectors::ollama::is_loopback_url(&u) {
-            return Err(bad("Ollama URL must be loopback"));
-        }
-        sel.ollama_url = u;
-    }
-    st.db().set_setting("classifier", &sel, "owner")?;
-    let status = st.models.apply_selection(&sel).await;
-    owner_event(st, "model", "CLASSIFIER_SELECT", &format!("Generative classifier set to {}", state::classifier_kind_label(kind)), vec![], Sensitivity::Low);
-    Ok(json!(status))
+/// Select (and load) a span model size. Install it first.
+pub fn select_model_inner(st: &AppState, model: &str) -> Result<Value, ApiErr> {
+    let m = crate::models::resolve_name(model).ok_or_else(|| bad("model must be edge, small or base"))?;
+    st.models.provisioned(&m).map_err(|e| bad(format!("{m} is not installed: {e}")))?;
+    st.db().set_setting("span_model", &SpanSelection { model: m.clone() }, "owner")?;
+    let loaded = state::apply_span(st, &m);
+    owner_event(st, "model", "SPAN_MODEL_SELECT", &format!("Detection model set to {m}"), vec![], Sensitivity::Low);
+    Ok(json!({"model": m, "loaded": loaded, "status": st.models.status()["span"]}))
 }
 
 async fn select_model(State(st): St, Json(s): Json<SelectModel>) -> R {
-    let kind = ClassifierKind::parse(&s.kind).ok_or_else(|| bad("kind must be qwen3guard, lfm3 or none"))?;
-    Ok(Json(select_model_inner(&st, kind, s.ollama_url).await?))
+    Ok(Json(select_model_inner(&st, &s.model)?))
 }
 
-#[derive(Deserialize)]
-struct PullReq {
-    kind: String,
+#[derive(Deserialize, Default)]
+struct InstallReq {
+    model: Option<String>,
 }
 
-async fn pull_model(State(st): St, Json(p): Json<PullReq>) -> R {
-    let kind = ClassifierKind::parse(&p.kind).ok_or_else(|| bad("kind must be qwen3guard or lfm3"))?;
-    let sel: ClassifierSelection = st.db().setting("classifier")?.unwrap_or_default();
-    let id = st.models.start_pull(kind, &sel.ollama_url).map_err(bad)?;
-    Ok(Json(json!({"job": id})))
+/// Download (pinned, sha256-verified), select and load a span model.
+pub async fn install_model_inner(st: &AppState, model: Option<&str>) -> Result<Value, ApiErr> {
+    let sel: SpanSelection = st.db().setting("span_model")?.unwrap_or_default();
+    let m = match model {
+        Some(x) => crate::models::resolve_name(x).ok_or_else(|| bad("model must be edge, small or base"))?,
+        None => sel.model,
+    };
+    st.models.provision(&m).await.map_err(bad)?;
+    select_model_inner(st, &m)
 }
 
-async fn job(State(st): St, Path(id): Path<String>) -> R {
-    let j = st.models.jobs.lock().unwrap().get(&id).cloned().ok_or_else(|| ApiErr(StatusCode::NOT_FOUND, "no such job".into()))?;
-    Ok(Json(json!(j)))
-}
-
-async fn install_gliner(State(st): St) -> R {
-    st.models.provision_gliner().await.map_err(bad)?;
-    st.models.load_span_model();
-    Ok(Json(json!(st.models.status()["span"])))
+async fn install_model(State(st): St, body: Option<Json<InstallReq>>) -> R {
+    let r = body.map(|b| b.0).unwrap_or_default();
+    Ok(Json(install_model_inner(&st, r.model.as_deref()).await?))
 }
 
 #[derive(Deserialize)]
@@ -802,10 +773,11 @@ struct ModelTest {
 }
 
 async fn test_model(State(st): St, Json(t): Json<ModelTest>) -> R {
-    let text = t.text.unwrap_or_else(|| "Synthetic test: email test.user@example.com, SSN 123-45-6789, key sk-proj-TESTONLYabcdefghijklmnop123456".into());
+    let text = t.text.unwrap_or_else(|| "Synthetic test: remind maria gonzalez (test.user@example.com) about her insulin refill; SSN 123-45-6789".into());
     let t0 = std::time::Instant::now();
-    let rep = st.engine.detector.detect(&[text], true).await;
-    Ok(Json(json!({"latency_ms": t0.elapsed().as_millis() as u64, "categories": rep.findings.iter().map(|f| &f.category).collect::<Vec<_>>(), "failures": rep.failures, "recognizers": rep.recognizer_versions, "semantic_latency_ms": rep.semantic_latency_ms, "span_latency_ms": rep.span_latency_ms, "tokens_per_sec": rep.semantic_tokens_per_sec})))
+    let rep = st.engine.detector.detect(std::slice::from_ref(&text), true).await;
+    let found: Vec<Value> = rep.findings.iter().map(|f| json!({"category": f.category, "text": text.get(f.start_byte..f.end_byte), "confidence": f.confidence, "recognizer": f.recognizer_id})).collect();
+    Ok(Json(json!({"latency_ms": t0.elapsed().as_millis() as u64, "findings": found, "failures": rep.failures, "recognizers": rep.recognizer_versions, "span_latency_ms": rep.span_latency_ms})))
 }
 
 // ------------------------------------------------------------------ approvals
@@ -871,7 +843,7 @@ async fn get_settings(State(st): St) -> R {
         "engine": st.engine.settings(),
         "detector": st.engine.detector.settings(),
         "notifications": ns,
-        "classifier": st.db().setting::<ClassifierSelection>("classifier")?.unwrap_or_default(),
+        "span_model": st.db().setting::<SpanSelection>("span_model")?.unwrap_or_default(),
         "onboarding": onboarding,
         "consents": st.db().consents()?,
     })))
@@ -925,13 +897,14 @@ fn merge(a: &mut Value, b: &Value) {
 
 async fn onboarding(State(st): St) -> R {
     let s: OnboardingState = st.db().setting("onboarding")?.unwrap_or_default();
-    let sel: ClassifierSelection = st.db().setting("classifier")?.unwrap_or_default();
+    let sel: SpanSelection = st.db().setting("span_model")?.unwrap_or_default();
     Ok(Json(json!({
         "state": s,
         "categories": category::BUILTIN,
         "defaults": default_category_choices(),
-        "classifier": sel,
-        "ollama": st.models.ollama_status(&sel.ollama_url).await,
+        "span_model": sel,
+        "span_options": st.models.status()["options"],
+        "ollama": ollama_status().await,
         "near_default_base": pv_provider::near::DEFAULT_NEAR_BASE,
         "spec_preferred_model": pv_provider::near::SPEC_PREFERRED_MODEL,
         "base_url": st.base_url(),
@@ -950,7 +923,8 @@ pub struct OnboardingPayload {
     pub tee_consent: bool,
     #[serde(default)]
     pub local_private_handling: bool,
-    pub classifier: Option<String>,
+    /// Span model size to install: edge | small | base. None = skip (deterministic only).
+    pub span_model: Option<String>,
     #[serde(default)]
     pub near: NearSetup,
     pub ollama_generation: Option<OllamaGen>,
@@ -960,7 +934,7 @@ pub struct OnboardingPayload {
     #[serde(default)]
     pub secrets: Vec<SecretSetup>,
     #[serde(default)]
-    pub concepts: Vec<AddConcept>,
+    pub entities: Vec<AddEntity>,
 }
 
 #[derive(Deserialize)]
@@ -1106,10 +1080,13 @@ pub async fn complete_onboarding_inner(st: &AppState, p: OnboardingPayload) -> R
     s.failover = fo;
     state::save_settings(st, &s, "onboarding")?;
     st.db().record_consent("tee_private_route", s.fallback.tee_consent, &json!({"mode": format!("{:?}", s.fallback.mode)}), Some(&st.engine.policy_hash()))?;
-    // 4. Classifier.
-    if let Some(k) = &p.classifier {
-        let kind = ClassifierKind::parse(k).ok_or_else(|| bad("unknown classifier"))?;
-        select_model_inner(st, kind, None).await?;
+    // 4. Span model (download + verify + load). Failure is reported, not fatal.
+    let mut span_status = json!(null);
+    if let Some(m) = &p.span_model {
+        span_status = match install_model_inner(st, Some(m)).await {
+            Ok(v) => v,
+            Err(e) => json!({"error": e.1}),
+        };
     }
     // 5. Notifications.
     if let Some(on) = p.notifications {
@@ -1118,12 +1095,12 @@ pub async fn complete_onboarding_inner(st: &AppState, p: OnboardingPayload) -> R
         st.db().set_setting("notifications", &ns, "onboarding")?;
         *st.notify_settings.settings.lock().unwrap() = ns;
     }
-    // 6. Optional exact values and concepts.
+    // 6. Optional exact values and custom entity types.
     for sec in p.secrets {
         add_secret_inner(st, AddSecretInput { kind: ExactKind::Value, label: sec.label, value: sec.value, norm: default_norm(), action: sec.action, allow: false })?;
     }
-    for c in p.concepts {
-        add_concept_inner(st, c)?;
+    for e in p.entities {
+        add_entity_inner(st, e)?;
     }
     // 7. Ensure a default app key exists.
     let mut new_key = None;
@@ -1136,7 +1113,7 @@ pub async fn complete_onboarding_inner(st: &AppState, p: OnboardingPayload) -> R
     let ob = OnboardingState { completed: true, completed_at: Some(Utc::now().to_rfc3339()), version: 1, near_skipped: p.near.skip || !providers_made.contains(&"near") };
     st.db().set_setting("onboarding", &ob, "onboarding")?;
     owner_event(st, "settings", "ONBOARDING_COMPLETE", &format!("Onboarding saved (policy {})", &st.engine.policy_hash()[..19]), vec![], Sensitivity::Low);
-    Ok(json!({"ok": true, "policy_hash": st.engine.policy_hash(), "base_url": st.base_url(), "api_key": new_key, "near_status": if ob.near_skipped { "NEAR_NOT_CONFIGURED" } else { "CONFIGURED" }}))
+    Ok(json!({"ok": true, "policy_hash": st.engine.policy_hash(), "base_url": st.base_url(), "api_key": new_key, "near_status": if ob.near_skipped { "NEAR_NOT_CONFIGURED" } else { "CONFIGURED" }, "span_model": span_status}))
 }
 
 async fn complete_onboarding(State(st): St, Json(p): Json<OnboardingPayload>) -> R {
@@ -1191,13 +1168,13 @@ pub async fn health_report(st: &AppState) -> Value {
     if s.emergency_stop {
         warnings.push("emergency stop engaged".into());
     }
-    let cls = st.models.classifier.lock().unwrap().clone();
-    if let Some(e) = &cls.error {
-        warnings.push(format!("classifier: {e}"));
-    }
     let span = st.models.span.lock().unwrap().clone();
     if !span.loaded {
-        warnings.push(format!("GLiNER span model not loaded: {}", span.error.clone().unwrap_or_default()));
+        if span.provisioned {
+            warnings.push(format!("detection model installed but not loaded; requests fail closed to review: {}", span.error.clone().unwrap_or_default()));
+        } else {
+            warnings.push("detection model (GLiNER) not installed: only deterministic recognizers run; run `promptvpn model install`".into());
+        }
     }
     let pending = st.db().list_pending(false).map(|v| v.len()).unwrap_or(0);
     json!({
@@ -1209,7 +1186,6 @@ pub async fn health_report(st: &AppState) -> Value {
         "vault": {"backend": st.vault().backend_name(), "secure": st.vault().backend_secure(), "active_key": st.vault().active_key_id()},
         "audit_chain": match chain { Ok(n) => json!({"ok": true, "events": n}), Err(e) => json!({"ok": false, "error": e.to_string()}) },
         "near": {"status": near_status, "verifications": st.engine.registry.cached_verifications()},
-        "classifier": cls,
         "span": span,
         "destinations": providers.iter().map(|p| json!({"id": p.id, "kind": p.kind, "declared_tier": p.declared_tier, "enabled": p.enabled})).collect::<Vec<_>>(),
         "default_destination": s.default_destination,

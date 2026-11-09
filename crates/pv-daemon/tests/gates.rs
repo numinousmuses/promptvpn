@@ -200,3 +200,38 @@ async fn health_reports_near_not_configured_and_no_secrets() {
     assert_eq!(pub_health.as_object().unwrap().len(), 3);
     assert!(!pub_health.to_string().contains(&h.admin));
 }
+
+#[tokio::test]
+async fn custom_entity_types_tokenized_and_restored() {
+    let h = harness("mock-echo").await;
+    // Deterministic stand-in for GLiNER: finds "<label>: <value>".
+    h.st.engine.detector.set_span(Some(std::sync::Arc::new(pv_detectors::span::KeywordSpans { builtin: vec![], fail: false })));
+    h.st.engine.detector.set_settings(pv_detectors::DetectorSettings { span_enabled: true, span_required: true, span_timeout_ms: 2000 });
+    let (s, v) = h.admin_post("/entities", json!({"label": "Policy Number"})).await;
+    assert_eq!(s, 200, "{v}");
+    let (s, v) = h.admin_post("/entities", json!({"label": "email address"})).await;
+    assert_eq!(s, 400, "built-in labels rejected: {v}");
+    let (s, v) = h.chat(user("renew policy number: PX-4471 before friday")).await;
+    assert_eq!(s, 200, "{v}");
+    assert!(!h.upstream_text().contains("PX-4471"));
+    assert!(h.upstream_text().contains("[[PV_CUSTOM_"));
+    assert!(v["choices"][0]["message"]["content"].as_str().unwrap().contains("PX-4471"));
+    // Per-entity action: block.
+    let (_, l) = h.admin_get("/entities").await;
+    let id = l["entities"][0]["entity"]["id"].as_str().unwrap().to_string();
+    h.http.delete(format!("{}/api/admin/v1/entities/{id}", h.base)).bearer_auth(&h.admin).send().await.unwrap();
+    h.admin_post("/entities", json!({"label": "employee id", "action": "BLOCK"})).await;
+    let (s, _) = h.chat(user("employee id: E12345 needs access")).await;
+    assert_eq!(s, 403);
+    assert!(!h.disk_text().contains("PX-4471"));
+}
+
+#[tokio::test]
+async fn entities_without_model_fail_closed() {
+    let h = harness("mock-echo").await;
+    h.st.engine.detector.set_settings(pv_detectors::DetectorSettings { span_enabled: true, span_required: false, span_timeout_ms: 2000 });
+    h.admin_post("/entities", json!({"label": "policy number"})).await;
+    let (s, v) = h.chat(user("policy number: PX-1")).await;
+    assert_eq!(s, 428, "{v}");
+    assert_eq!(h.rec.count(), 0);
+}

@@ -38,8 +38,8 @@ pub struct Settings {
     pub retention_days: u32,
     pub max_request_bytes: usize,
     pub max_response_bytes: usize,
-    /// Run model classifiers on model output (forces full buffering of streams).
-    pub outbound_semantic: bool,
+    /// Also run the span model on model output (forces full buffering of streams).
+    pub outbound_span_model: bool,
     pub restore_placeholders: bool,
     /// Owner kill switch: block all proxy traffic.
     pub emergency_stop: bool,
@@ -59,7 +59,7 @@ impl Default for Settings {
             retention_days: 30,
             max_request_bytes: 4 << 20,
             max_response_bytes: 8 << 20,
-            outbound_semantic: false,
+            outbound_span_model: false,
             restore_placeholders: true,
             emergency_stop: false,
         }
@@ -115,7 +115,7 @@ pub fn summarize(categories: &[String], action: &str) -> String {
         .filter(|c| c.as_str() != category::PUBLIC_INFORMATION)
         .map(|c| match category::info(c) {
             Some(i) => i.label.to_string(),
-            None if c.starts_with(category::CONCEPT_PREFIX) => "Semantic concept".into(),
+            None if c.starts_with(category::CUSTOM_PREFIX) => "Custom entity".into(),
             None if c == category::EXACT_SECRET => "Registered secret".into(),
             None if c == category::UNCERTAIN => "Possible sensitive data".into(),
             None if c == category::CLASSIFIER_FAILURE => "Classifier failure".into(),
@@ -557,7 +557,7 @@ impl Engine {
             exact: self.detector.exact.read().unwrap().clone(),
             scope: c.scope.clone(),
             restore: s.restore_placeholders,
-            semantic: s.outbound_semantic,
+            span_model: s.outbound_span_model,
         })
     }
 

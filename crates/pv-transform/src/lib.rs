@@ -47,7 +47,7 @@ pub fn generalize(category: &str, original: &str) -> String {
         DOB => "[a date of birth]".into(),
         HEALTH_INFORMATION => "[a health condition]".into(),
         FINANCIAL_ACCOUNT => "[a bank account]".into(),
-        c if c.starts_with(CONCEPT_PREFIX) => "[a confidential detail]".into(),
+        c if c.starts_with(CUSTOM_PREFIX) => "[a confidential detail]".into(),
         _ => redaction(category),
     }
 }
@@ -260,7 +260,7 @@ mod tests {
     fn whole_field_transform_refused() {
         let v = vault();
         let mut fields = vec!["secret plans".to_string()];
-        let mut c = f("CONCEPT:x", 0, 12);
+        let mut c = f("CUSTOM:x", 0, 12);
         c.whole_field = true;
         let d = decision(&[(&c, Action::Tokenize)]);
         assert!(apply(&mut fields, &[c], &d, &v, "c", Duration::hours(1)).is_err());

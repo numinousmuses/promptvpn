@@ -22,8 +22,8 @@ pub const PUBLIC_INFORMATION: &str = "PUBLIC_INFORMATION";
 
 /// Registered exact values.
 pub const EXACT_SECRET: &str = "EXACT_SECRET";
-/// Prefix for semantic concept categories: `CONCEPT:<concept_id>`.
-pub const CONCEPT_PREFIX: &str = "CONCEPT:";
+/// Prefix for owner-defined entity types found by the span model: `CUSTOM:<entity_id>`.
+pub const CUSTOM_PREFIX: &str = "CUSTOM:";
 /// Sensitive content was indicated but could not be localized or confidently typed.
 pub const UNCERTAIN: &str = "UNCERTAIN";
 /// A required classifier did not complete.
@@ -75,7 +75,7 @@ pub fn sensitivity_of(id: &str) -> Sensitivity {
     if id == EXACT_SECRET || id.starts_with("EXACT_SECRET:") {
         return Sensitivity::Critical;
     }
-    if id.starts_with(CONCEPT_PREFIX) || id == UNCERTAIN || id == CLASSIFIER_FAILURE {
+    if id.starts_with(CUSTOM_PREFIX) || id == UNCERTAIN || id == CLASSIFIER_FAILURE {
         return Sensitivity::High;
     }
     Sensitivity::Moderate

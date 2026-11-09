@@ -5,9 +5,8 @@ use anyhow::{Context, Result};
 use pv_core::*;
 use pv_detectors::exact::{ExactEntry, ExactKind, ExactMatcher};
 use pv_detectors::normalize::NormOpts;
-use pv_detectors::semantic::{Concept, SemanticClassifier};
-use pv_detectors::span::SpanModel;
-use pv_detectors::{Detector, DetectorSettings, SemanticMode};
+use pv_detectors::span::{CustomEntity, SpanModel};
+use pv_detectors::{Detector, DetectorSettings};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -36,7 +35,7 @@ pub struct Label {
 #[derive(Debug, Deserialize, Default)]
 pub struct CorpusMeta {
     #[serde(default)]
-    pub concepts: Vec<Concept>,
+    pub entities: Vec<CustomEntity>,
     #[serde(default)]
     pub exact_values: Vec<String>,
 }
@@ -63,7 +62,6 @@ pub struct Report {
     pub latency_ms_p50: f64,
     pub latency_ms_p95: f64,
     pub peak_rss_mb: f64,
-    pub semantic_tokens_per_sec: Option<f64>,
     pub classifier_failures: u32,
     pub mismatches: Vec<Value>,
 }
@@ -127,7 +125,7 @@ pub fn load(corpus: &str) -> Result<(Vec<Case>, CorpusMeta)> {
     Ok((cases, meta))
 }
 
-pub async fn run(config: &str, cases: &[Case], meta: &CorpusMeta, span: Option<Arc<dyn SpanModel>>, semantic: Option<Arc<dyn SemanticClassifier>>) -> Report {
+pub async fn run(config: &str, cases: &[Case], meta: &CorpusMeta, span: Option<Arc<dyn SpanModel>>) -> Report {
     let det = Detector::default();
     det.set_exact(ExactMatcher::new(
         meta.exact_values
@@ -136,21 +134,22 @@ pub async fn run(config: &str, cases: &[Case], meta: &CorpusMeta, span: Option<A
             .map(|(i, v)| ExactEntry { secret_id: format!("eval_{i}"), kind: ExactKind::Value, value: Zeroizing::new(v.clone()), norm: NormOpts { unicode: true, casefold: true, whitespace: true, separators: false }, allow: false })
             .collect(),
     ));
-    det.set_concepts(meta.concepts.clone());
-    let use_sem = semantic.is_some();
-    det.set_semantic(semantic);
+    // Custom entity types need the span model; without it they are not evaluated.
+    if span.is_some() {
+        det.set_entities(meta.entities.clone());
+    }
     det.set_span(span.clone());
-    det.set_settings(DetectorSettings { semantic_mode: if use_sem { SemanticMode::Always } else { SemanticMode::Off }, span_enabled: span.is_some(), span_required: false, semantic_timeout_ms: 30_000 });
+    det.set_settings(DetectorSettings { span_enabled: span.is_some(), span_required: false, span_timeout_ms: 60_000 });
     let policy = default_policy(&default_category_choices());
     let mut policy = policy;
-    for c in &meta.concepts {
+    for c in &meta.entities {
         policy.rules.push(PolicyRule {
             schema_version: 1,
-            id: format!("concept-{}", c.id),
+            id: format!("entity-{}", c.id),
             version: 1,
             scope: Scope { kind: ScopeKind::User, id: "local-owner".into() },
-            selector: Selector { categories: vec![format!("CONCEPT:{}", c.id)], destinations: vec!["external".into()], direction: Direction::Inbound, min_confidence: None },
-            action: Action::Block,
+            selector: Selector { categories: vec![format!("CUSTOM:{}", c.id)], destinations: vec!["external".into()], direction: Direction::Inbound, min_confidence: None },
+            action: Action::Tokenize,
             severity: Sensitivity::High,
             notify: vec![],
             override_mode: OverrideMode::PolicyOwnerOnly,
@@ -176,15 +175,11 @@ pub async fn run(config: &str, cases: &[Case], meta: &CorpusMeta, span: Option<A
     let mut lat = vec![];
     let (mut crit, mut escapes, mut correct, mut benign, mut false_blocks, mut fails) = (0u32, 0u32, 0u32, 0u32, 0u32, 0u32);
     let (mut kept, mut total_nonlabel) = (0usize, 0usize);
-    let mut tps = vec![];
     let mut mismatches = vec![];
     for c in cases {
         let t = Instant::now();
-        let rep = det.detect(std::slice::from_ref(&c.text), use_sem || span.is_some()).await;
+        let rep = det.detect(std::slice::from_ref(&c.text), span.is_some()).await;
         lat.push(t.elapsed().as_secs_f64() * 1000.0);
-        if let Some(x) = rep.semantic_tokens_per_sec {
-            tps.push(x);
-        }
         if !rep.failures.is_empty() {
             fails += 1;
         }
@@ -279,19 +274,17 @@ pub async fn run(config: &str, cases: &[Case], meta: &CorpusMeta, span: Option<A
         latency_ms_p50: pct(&mut lat.clone(), 0.5),
         latency_ms_p95: pct(&mut lat, 0.95),
         peak_rss_mb: peak_rss_mb(),
-        semantic_tokens_per_sec: if tps.is_empty() { None } else { Some(tps.iter().sum::<f64>() / tps.len() as f64) },
         classifier_failures: fails,
         mismatches,
     }
 }
 
 pub fn markdown(reports: &[Report]) -> String {
-    let mut s = String::from("| config | cases | critical escapes | escape rate | decision acc. | false-block rate | utility kept | p50 ms | p95 ms | peak RSS MB | sem. tok/s | classifier failures |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    let mut s = String::from("| config | cases | critical escapes | escape rate | decision acc. | false-block rate | utility kept | p50 ms | p95 ms | peak RSS MB | classifier failures |\n|---|---|---|---|---|---|---|---|---|---|---|\n");
     for r in reports {
         s += &format!(
-            "| {} | {} | {}/{} | {:.3} | {:.3} | {:.3} | {:.3} | {:.1} | {:.1} | {:.0} | {} | {} |\n",
-            r.config, r.cases, r.critical_escapes, r.critical_labels, r.critical_escape_rate, r.decision_accuracy, r.false_block_rate, r.utility_preserved, r.latency_ms_p50, r.latency_ms_p95, r.peak_rss_mb,
-            r.semantic_tokens_per_sec.map(|t| format!("{t:.0}")).unwrap_or_else(|| "-".into()), r.classifier_failures
+            "| {} | {} | {}/{} | {:.3} | {:.3} | {:.3} | {:.3} | {:.1} | {:.1} | {:.0} | {} |\n",
+            r.config, r.cases, r.critical_escapes, r.critical_labels, r.critical_escape_rate, r.decision_accuracy, r.false_block_rate, r.utility_preserved, r.latency_ms_p50, r.latency_ms_p95, r.peak_rss_mb, r.classifier_failures
         );
     }
     s += "\nPer-category precision / recall:\n\n| config | category | precision | recall | FNR |\n|---|---|---|---|---|\n";

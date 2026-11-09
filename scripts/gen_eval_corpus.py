@@ -5,7 +5,7 @@ Every value is synthetic. Labels are given as exact values plus category; the
 evaluator locates them in the text. `expect` is the decision the default
 policy should reach for an external, unverified destination with
 block-and-review fallback and no TEE consent:
-  BLOCK      critical data, registered exact values, or protected concepts
+  BLOCK      critical data or registered exact values
   TRANSFORM  only noncritical PII that is tokenized/redacted by default
   ALLOW      names only, public information, or nothing sensitive
   REVIEW     uncertain content (held for the owner)
@@ -187,19 +187,67 @@ for i, t in enumerate(["What's the status of Project Nightjar?", "project   NIGH
     v = {0: "Project Nightjar", 1: "project   NIGHTJAR", 2: "ACME-INTERNAL-7731", 3: "acme-internal-7731"}[i]
     add(f"exact-{i}", t, [(v, "EXACT_SECRET")], "BLOCK", ["exact"])
 
-# ---------------------------------------------------------------- semantic-only disclosures
-SEM = [
-    ("accel", "Our unannounced Orion-7 accelerator delivers 3.2 PFLOPS FP8 and tapes out in March 2027; write a board summary."),
-    ("accel", "Internal only: the next-gen X-9 chip has 192GB HBM4 and a 900mm2 die, not public yet."),
-    ("accel", "Leaked roadmap says our Polaris inference ASIC hits 4x perf/W over H100 before announcement."),
-    ("mna", "We're in confidential talks to acquire Brightline Labs for about $340M; draft a memo to the deal team."),
-    ("mna", "Term sheet for the Helix merger: 1.4x revenue multiple, exclusivity until Jan 15. Keep it quiet."),
-    ("mna", "Board approved the secret bid for NorthPeak; announce date TBD. Prepare talking points."),
-    ("finance", "Q3 numbers before release: revenue $41.2M, down 8%, and we will miss guidance."),
-    ("finance", "Unpublished earnings: gross margin fell to 31% this quarter; draft the investor FAQ before the call."),
+# ---------------------------------------------------------------- free-text PII (no regex shape)
+# These need the span model: names without cues or capitals, addresses without
+# street numbers, conditions in casual prose, usernames, places tied to people.
+LOWER_NAMES = ["maria gonzalez", "john smith", "aisha okafor", "wei chen", "lucas silva", "priya patel", "kenji tanaka", "elena rossi"]
+for i, n in enumerate(LOWER_NAMES):
+    t = R.choice([f"can you remind {n} about the standup", f"forward this to {n} when you get a chance", f"{n} said the build is broken again", f"ask {n} for the quarterly deck"])
+    add(f"free-name-{i}", t, [(n, "PERSON")], "ALLOW", ["free-text", "person"])
+for i in range(10):
+    n = person()
+    t = R.choice([f"I had coffee with {n} yesterday and we discussed the launch.", f"{n} is out sick, so reassign the ticket.", f"Draft a thank-you note to {n} for the referral.", f"Notes from the 1:1 with {n}: wants more ownership."])
+    add(f"free-name-cap-{i}", t, [(n, "PERSON")], "ALLOW", ["free-text", "person"])
+FREE_ADDR = [
+    "the yellow house on 14th and Pine in Portland",
+    "the corner of Maple and 3rd, next to the bakery in Riverton",
+    "apartment 4B in the Lakeview Towers building",
+    "the farmhouse off County Road 9 outside Fairview",
+    "unit 12 at Harbor Point Condos in Georgetown",
+    "the brick duplex behind the Elm Drive school",
 ]
-for i, (c, t) in enumerate(SEM):
-    add(f"semantic-{c}-{i}", t, [(t, f"CONCEPT:{c}")], "BLOCK", ["semantic-only"])
+for i, a in enumerate(FREE_ADDR):
+    add(f"free-address-{i}", f"Please send the replacement part to {a}.", [(a, "ADDRESS")], "TRANSFORM", ["free-text", "address"])
+FREE_HEALTH = [
+    ("my therapist upped my sertraline dose", "sertraline"),
+    ("she's been dealing with her MS flare-ups all month", "MS flare-ups"),
+    ("he just got out of rehab for alcohol dependence", "alcohol dependence"),
+    ("my daughter's ADHD meds aren't working", "ADHD"),
+    ("I'm 20 weeks pregnant and need to move my deadline", "pregnant"),
+    ("my dad's dementia is getting worse", "dementia"),
+    ("I've had panic attacks before every presentation", "panic attacks"),
+    ("they found a tumor on my left kidney", "tumor"),
+    ("I'm allergic to penicillin, flag it for the clinic form", "penicillin"),
+    ("my HbA1c came back at 8.1 so the doctor changed my insulin", "insulin"),
+]
+for i, (t, v) in enumerate(FREE_HEALTH):
+    add(f"free-health-{i}", t + ".", [(v, "HEALTH_INFORMATION")], "TRANSFORM", ["free-text", "health"])
+FREE_MISC = [
+    ("free-dob-0", "I was born on the fourth of July, 1988, if that helps verify me.", [("the fourth of July, 1988", "DOB")], "TRANSFORM"),
+    ("free-dob-1", "Her birthday is March 3rd 1975 and she's turning 50.", [("March 3rd 1975", "DOB")], "TRANSFORM"),
+    ("free-phone-0", "text me at five five five, oh one oh, four four two two", [("five five five, oh one oh, four four two two", "PHONE")], "TRANSFORM"),
+    ("free-acct-0", "wire it to my checking, the one ending 4471 at First Riverton Bank", [("ending 4471", "FINANCIAL_ACCOUNT")], "TRANSFORM"),
+    ("free-user-0", "the login is jsmith_1987 and it keeps locking out", [("jsmith_1987", "PERSON")], "ALLOW"),
+    ("free-email-0", "my email is just my first and last name at the company domain", [], "ALLOW"),
+]
+for cid, t, labels, exp in FREE_MISC:
+    add(cid, t, labels, exp, ["free-text"])
+# Mixed real-world prompts
+MIXED = [
+    ("mixed-0", "hey can you write a short note to priya patel saying her MRI results are back and she should call dr. kim", [("priya patel", "PERSON"), ("MRI results", "HEALTH_INFORMATION")], "TRANSFORM"),
+    ("mixed-1", "summarize: tenant wei chen at the blue duplex on Cedar Lane is behind on rent due to chemo", [("wei chen", "PERSON"), ("chemo", "HEALTH_INFORMATION")], "TRANSFORM"),
+    ("mixed-2", "Reply to Omar Farouk: congrats on the new baby, take all the leave you need", [("Omar Farouk", "PERSON")], "ALLOW"),
+]
+for cid, t, labels, exp in MIXED:
+    add(cid, t, labels, exp, ["free-text", "mixed"])
+
+# ---------------------------------------------------------------- custom entity types (owner-defined labels)
+for i in range(6):
+    v = f"POL-{R.randint(100000, 999999)}"
+    add(f"custom-policy-{i}", R.choice([f"Customer wants to cancel insurance policy {v} effective today.", f"Look up policy number {v} and summarize the coverage."]), [(v, "CUSTOM:policy")], "TRANSFORM", ["custom-entity"])
+for i in range(6):
+    v = f"E{R.randint(10000, 99999)}"
+    add(f"custom-employee-{i}", R.choice([f"Employee ID {v} needs a laptop refresh.", f"Grant repo access to employee {v}."]), [(v, "CUSTOM:employee")], "TRANSFORM", ["custom-entity"])
 
 # ---------------------------------------------------------------- hard negatives
 NEG = [
@@ -258,10 +306,9 @@ for cid, t, labels, exp in HARD:
 meta = {
     "meta": {
         "exact_values": ["Project Nightjar", "ACME-INTERNAL-7731"],
-        "concepts": [
-            {"id": "accel", "name": "Accelerator specs", "description": "Unreleased hardware accelerator or chip specifications: performance, memory, die size, tape-out dates for products not yet announced", "safe_examples": ["NVIDIA H100 has 80GB HBM3"], "sensitive_examples": ["X9 delivers 2.1 PFLOPS at 450W, tape-out next spring"]},
-            {"id": "mna", "name": "Confidential negotiations", "description": "Confidential merger, acquisition or investment negotiations: targets, prices, term sheets, exclusivity", "safe_examples": ["Microsoft acquired GitHub in 2018"], "sensitive_examples": ["We are in talks to buy Acme for $200M"]},
-            {"id": "finance", "name": "Unreleased financials", "description": "Non-public financial results or guidance before official release", "safe_examples": ["The public 10-K lists revenue of $4.1B"], "sensitive_examples": ["Q2 revenue will miss guidance by 12%, not yet announced"]},
+        "entities": [
+            {"id": "policy", "label": "insurance policy number"},
+            {"id": "employee", "label": "employee id"},
         ],
     }
 }

@@ -199,8 +199,8 @@ async fn expired_payloads_destroyed() {
 #[tokio::test]
 async fn block_and_review_fallback_for_classifier_failure() {
     let h = harness("mock-echo").await;
-    // Semantic classifier required but missing → CLASSIFIER_FAILURE → review.
-    h.st.engine.detector.set_settings(pv_detectors::DetectorSettings { semantic_mode: pv_detectors::SemanticMode::Always, span_enabled: false, span_required: false, semantic_timeout_ms: 500 });
+    // Detection model required but missing → CLASSIFIER_FAILURE → review.
+    h.st.engine.detector.set_settings(pv_detectors::DetectorSettings { span_enabled: true, span_required: true, span_timeout_ms: 500 });
     let (s, v) = h.chat(user("ordinary text")).await;
     assert_eq!(s, 428, "{v}");
     assert!(v["error"]["categories"].to_string().contains("CLASSIFIER_FAILURE"));

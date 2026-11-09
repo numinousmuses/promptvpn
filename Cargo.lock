@@ -3874,7 +3874,6 @@ name = "pv-detectors"
 version = "0.1.0"
 dependencies = [
  "aho-corasick",
- "async-trait",
  "base64 0.22.1",
  "futures",
  "gline-rs",

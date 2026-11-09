@@ -25,8 +25,8 @@ pub enum ClassifierType {
     Builtin,
     /// User-registered exact sensitive values.
     Exact,
-    /// User-defined natural-language concepts judged by the local generative classifier.
-    Semantic,
+    /// Owner-defined entity types found by the span model (GLiNER zero-shot labels).
+    Custom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
@@ -50,7 +50,7 @@ pub enum Direction {
     Both,
 }
 
-/// One detected sensitive span (or whole-field semantic judgement).
+/// One detected sensitive span (or a whole-field marker such as a classifier failure).
 ///
 /// Offsets are UTF-8 byte offsets into the exact local buffer of `field_path`.
 /// A finding never carries the matched text.
@@ -60,7 +60,7 @@ pub struct Finding {
     pub schema_version: u32,
     pub finding_id: String,
     pub classifier_type: ClassifierType,
-    /// Built-in category (e.g. `GOVERNMENT_ID`), `EXACT_SECRET`, `CONCEPT:<id>`,
+    /// Built-in category (e.g. `GOVERNMENT_ID`), `EXACT_SECRET`, `CUSTOM:<id>`,
     /// `UNCERTAIN` or `CLASSIFIER_FAILURE`.
     pub category: String,
     pub start_byte: usize,
@@ -76,7 +76,7 @@ pub struct Finding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub concept_id: Option<String>,
+    pub entity_id: Option<String>,
     /// Classifier/model version that produced the finding.
     #[serde(default)]
     pub classifier_version: String,
@@ -113,7 +113,7 @@ impl Finding {
             sensitivity,
             field_index: 0,
             secret_id: None,
-            concept_id: None,
+            entity_id: None,
             classifier_version: String::new(),
             whole_field: false,
         }

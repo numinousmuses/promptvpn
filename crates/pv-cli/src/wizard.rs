@@ -29,15 +29,9 @@ pub struct InitArgs {
     /// Allow a local Ollama generation model to handle content that needs privacy.
     #[arg(long)]
     pub local_private: bool,
-    /// qwen3guard | lfm3 | none
+    /// Detection model size: edge (~50 MB), small (~90 MB), base (~210 MB), or none.
     #[arg(long)]
-    pub classifier: Option<String>,
-    /// Do not pull the selected classifier now.
-    #[arg(long)]
-    pub no_pull: bool,
-    /// Skip GLiNER provisioning.
-    #[arg(long)]
-    pub no_gliner: bool,
+    pub model: Option<String>,
     /// Finish local-only (NEAR_NOT_CONFIGURED).
     #[arg(long)]
     pub near_skip: bool,
@@ -130,9 +124,9 @@ pub async fn run(paths: &Paths, port: u16, a: InitArgs) -> Result<()> {
             println!("  {k:<20} {}", v.as_str().unwrap_or(""));
         }
     }
-    println!("Add exact secrets later with `promptvpn secret add` and topics with `promptvpn concept add`.");
+    println!("Add exact terms later with `promptvpn secret add` and custom entity types with `promptvpn entity add`.");
 
-    h("4/6  When detection is uncertain or a local classifier fails");
+    h("4/6  When detection is uncertain or the detection model fails");
     println!("  review: stop locally, notify you, queue for your decision (nothing is sent)  [default]");
     println!("  tee:    send only to a NEAR model whose TEE attestation verifies. This STILL sends data off-device.");
     let mut fallback = a.fallback.clone();
@@ -151,19 +145,19 @@ pub async fn run(paths: &Paths, port: u16, a: InitArgs) -> Result<()> {
     let local_private = a.local_private || (interactive && confirm("  Allow a local Ollama generation model to handle such content (stays on device)?"));
 
     h("5/6  Models");
-    let mut classifier = a.classifier.clone().unwrap_or_else(|| "lfm3".into());
+    let options = ob["span_options"].as_array().cloned().unwrap_or_default();
+    let default = options.iter().find(|o| o["default"] == true).and_then(|o| o["model"].as_str()).unwrap_or("gliner-pii-base").trim_start_matches("gliner-pii-").to_string();
+    println!("  Detection model (runs inside Prompt VPN, no Ollama needed). It finds names, addresses,");
+    println!("  health details and your custom entity types that patterns cannot. Apache-2.0.");
+    for o in &options {
+        println!("    {:<6} {:>4} MB{}", o["model"].as_str().unwrap_or("").trim_start_matches("gliner-pii-"), o["size_bytes"].as_u64().unwrap_or(0) / 1_000_000, if o["default"] == true { "  (recommended)" } else { "" });
+    }
+    println!("    none   deterministic recognizers only");
+    let mut model = a.model.clone().unwrap_or(default);
     if interactive {
-        println!("  Local generative classifier (runs in Ollama, one active):");
-        println!("    qwen3guard  Qwen3Guard-Gen-0.6B, guard model with a PII category (Apache-2.0)");
-        println!("    lfm3        LFM3-1.7B, semantic concepts with JSON output (LFM Open License: commercial use under $10M revenue)");
-        println!("    none        deterministic recognizers + GLiNER only");
-        classifier = ask("  classifier", &classifier);
+        model = ask("  model", &model);
     }
     let ollama_ok = ob["ollama"]["reachable"] == true;
-    if classifier != "none" && !ollama_ok {
-        println!("  Ollama is not running. {}", ob["ollama"]["install"].as_str().unwrap_or("See https://ollama.com/download"));
-        println!("  Prompt VPN will not install it for you. Install it, then run `promptvpn model install {classifier}`.");
-    }
     // NEAR
     println!("\n  NEAR AI (recommended): user-facing inference on NEAR's gateway, with TEE-verified private models.");
     let mut near_skip = a.near_skip;
@@ -217,7 +211,7 @@ pub async fn run(paths: &Paths, port: u16, a: InitArgs) -> Result<()> {
         "fallback_mode": if fallback == "tee" { "TEE_PRIVATE_ROUTE" } else { "BLOCK_AND_REVIEW" },
         "tee_consent": fallback == "tee" && consent,
         "local_private_handling": local_private,
-        "classifier": if ollama_ok || classifier == "none" { Some(classifier.clone()) } else { None },
+        "span_model": if model == "none" { None } else { Some(model.clone()) },
         "near": {"skip": near_skip, "api_key": near_key, "model": near_model},
         "ollama_generation": ollama_model.map(|m| json!({"model": m})),
         "custom": custom,
@@ -225,31 +219,10 @@ pub async fn run(paths: &Paths, port: u16, a: InitArgs) -> Result<()> {
         "notifications": notifications,
     });
     let r = api.post("/onboarding/complete", payload).await?;
-    if classifier != "none" && ollama_ok && !a.no_pull {
-        let m = api.get("/models").await?;
-        if m["ollama"]["installed"][&classifier] != true {
-            println!("Pulling {classifier} through Ollama (verifying identity against models.lock.json)...");
-            let job = api.post("/models/pull", json!({"kind": classifier})).await?;
-            let id = job["job"].as_str().unwrap_or_default().to_string();
-            loop {
-                let s = api.get(&format!("/models/jobs/{id}")).await?;
-                if s["done"] == true {
-                    match s["error"].as_str() {
-                        Some(e) => println!("  pull failed: {e}"),
-                        None => println!("  verified {}", s["verified_digest"].as_str().unwrap_or("")),
-                    }
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(700)).await;
-            }
-        }
-        api.post("/models/select", json!({"kind": classifier})).await?;
-    }
-    if !a.no_gliner {
-        println!("Provisioning GLiNER PII Edge (pinned revision, sha256-verified)...");
-        match api.post("/models/gliner/install", json!({})).await {
-            Ok(v) => println!("  GLiNER loaded: {}", v["loaded"]),
-            Err(e) => println!("  GLiNER not installed: {e}"),
+    if model != "none" {
+        match r["span_model"]["error"].as_str() {
+            Some(e) => println!("Detection model not installed: {e}. Retry with `promptvpn model install {model}`."),
+            None => println!("Detection model {} installed and loaded: {}", r["span_model"]["model"].as_str().unwrap_or(""), r["span_model"]["loaded"]),
         }
     }
     println!("\nDone. Policy {}", r["policy_hash"].as_str().unwrap_or(""));

@@ -108,7 +108,7 @@ pub struct Scope {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Selector {
-    /// Category IDs. `*` matches all; `CONCEPT:*` all concepts; `EXACT_SECRET:<id>` one secret.
+    /// Category IDs. `*` matches all; `CUSTOM:*` all custom entity types; `EXACT_SECRET:<id>` one secret.
     pub categories: Vec<String>,
     /// `any`, `external` (any remote), `local`, `attested_tee`, `external_unverified`, or `dest:<id>`.
     #[serde(default = "default_destinations")]
@@ -205,7 +205,7 @@ impl PolicyRule {
         for c in &self.selector.categories {
             let s = if c == "*" {
                 Some(0)
-            } else if c == "CONCEPT:*" && finding.category.starts_with(category::CONCEPT_PREFIX) {
+            } else if c == "CUSTOM:*" && finding.category.starts_with(category::CUSTOM_PREFIX) {
                 Some(1)
             } else if *c == finding.category {
                 Some(2)
@@ -644,7 +644,7 @@ pub fn default_policy(choices: &CategoryChoices) -> PolicySet {
         ));
     }
     rules.push(rule("builtin-exact-secrets", &[category::EXACT_SECRET], &["external"], Direction::Inbound, Action::Block, Sensitivity::Critical, OverrideMode::PolicyOwnerOnly, "Block registered exact values before any remote destination"));
-    rules.push(rule("builtin-concepts", &["CONCEPT:*"], &["external"], Direction::Inbound, Action::Fallback, Sensitivity::High, OverrideMode::PolicyOwnerOnly, "Semantic concepts follow the fallback choice unless a concept rule says otherwise"));
+    rules.push(rule("builtin-custom-entities", &["CUSTOM:*"], &["external"], Direction::Inbound, Action::Tokenize, Sensitivity::High, OverrideMode::PolicyOwnerOnly, "Owner-defined entity types are replaced with reversible placeholders unless the entity's own rule says otherwise"));
     rules.push(rule("builtin-uncertain", &[category::UNCERTAIN], &["external"], Direction::Inbound, Action::Fallback, Sensitivity::High, OverrideMode::PolicyOwnerOnly, "Uncertain findings follow the fallback choice"));
     rules.push(rule("builtin-classifier-failure", &[category::CLASSIFIER_FAILURE], &["external"], Direction::Inbound, Action::Fallback, Sensitivity::High, OverrideMode::PolicyOwnerOnly, "Classifier failure follows the fallback choice; never silently allowed"));
     rules.push(rule("builtin-unsupported-content", &[category::UNSUPPORTED_CONTENT], &["external"], Direction::Inbound, Action::Block, Sensitivity::High, OverrideMode::PolicyOwnerOnly, "Content the proxy cannot inspect is blocked"));
