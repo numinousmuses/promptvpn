@@ -5,6 +5,7 @@
 # when a release key is available, dist/SHA256SUMS.sig (ssh-keygen -Y sign).
 # The dashboard is built first and embedded; no Node runtime is needed at install.
 set -eu
+. "$HOME/.cargo/env" 2>/dev/null || true
 root=$(cd "$(dirname "$0")/.." && pwd); cd "$root"
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 targets=${*:-$(rustc -vV | sed -n 's/host: //p')}

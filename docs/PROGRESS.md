@@ -43,10 +43,10 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 ## Phase 4: setup skill and packaging
 - [x] `skills/promptvpn-setup/SKILL.md`, scripts (discover, verified install, egress test, rollback), 10 script tests, generated adapters
 - [x] Packaging script with signed SHA256SUMS; macOS arm64 native + x86_64 cross build verified (x86 binary passes `connect test` under Rosetta)
-- [~] Linux x86_64/arm64: not built or run yet (no Linux host or Docker here; no hosted CI by policy). Run `sh scripts/check.sh` on a Linux box
+- [~] Linux x86_64/arm64: code paths exist but never built or run (no Linux host; deprioritized by Joshua since most users are on macOS). Run `sh scripts/check.sh` on a Linux box when needed
 - [x] Daemon autostart (launchd / systemd user) only with confirmation
 - [x] Uninstall keeps data by default; `--purge` needs typed DELETE
-- [~] **Gate:** skill flow exercised end to end on this Mac in a fresh PV_HOME (init, real models, egress test, client configure/rollback). A clean VM run is still to do
+- [x] **Gate (macOS):** clean install from the signed release archive via the skill's `install.sh` into a fresh prefix and data dir, real Keychain, GLiNER base downloaded and loaded, egress test pass, SSN blocked live, client configure + rollback, NEAR verified, dashboard served, `uninstall --purge` removed data and the Keychain entry
 
 ## Phase 5: NEAR AI Gateway
 - [x] Model discovery with privacy tiers; alias detection; `x-no-aliasing`
@@ -72,3 +72,4 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 - 2026-11-08: Re-architecture: generative classifiers and concepts removed; GLiNER base default (accuracy 0.944 vs 0.881 rules-only; person recall 0.26 → 0.89; health 0.52 → 0.86; p50 21 ms); custom entity types added.
 - 2026-11-08: Demo videos (Remotion, real captures) in docs/demo/; repo public at github.com/numinousmuses/promptvpn; generated eval corpus no longer committed (fake keys tripped GitHub push protection).
 - 2026-11-08: Hosted CI removed at Joshua's request (one accidental run cancelled ~1 min in; Actions disabled on the repo). Local `scripts/check.sh` replaces it.
+- 2026-11-08: Clean-install gate passed on macOS from the signed release archive (see Phase 4).
