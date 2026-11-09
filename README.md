@@ -12,6 +12,8 @@ AI client ──> 127.0.0.1:8787/v1 ──> detect ─────────�
                                     (+ your custom entity types)
 ```
 
+Demo videos (real terminal output and real dashboard screenshots): [overview, 61 s](docs/demo/promptvpn-overview.mp4) · [custom entity types, 25 s](docs/demo/promptvpn-custom-entities.mp4).
+
 Release 1 supports macOS (Apple Silicon and Intel) and Linux (x86_64 and ARM64). Windows is not supported.
 
 ## What it covers, and what it does not
