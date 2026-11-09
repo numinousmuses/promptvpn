@@ -1,6 +1,5 @@
 /target
 node_modules/
-apps/dashboard/dist/
 *.db
 *.db-*
 .pv-dev/

@@ -42,7 +42,7 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 
 ## Phase 4: setup skill and packaging
 - [x] `skills/promptvpn-setup/SKILL.md`, scripts (discover, verified install, egress test, rollback), 10 script tests, generated adapters
-- [x] Packaging script with signed SHA256SUMS; macOS arm64 native + x86_64 cross build verified (x86 binary passes `connect test` under Rosetta)
+- [x] Install via `install.sh` (curl, build from source, no sudo, offers rustup with consent); optional archives via `scripts/package.sh`; macOS x86_64 cross build verified under Rosetta
 - [~] Linux x86_64/arm64: code paths exist but never built or run (no Linux host; deprioritized by Joshua since most users are on macOS). Run `sh scripts/check.sh` on a Linux box when needed
 - [x] Daemon autostart (launchd / systemd user) only with confirmation
 - [x] Uninstall keeps data by default; `--purge` needs typed DELETE
@@ -52,7 +52,7 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 - [x] Model discovery with privacy tiers; alias detection; `x-no-aliasing`
 - [x] Attestation via official `nearai-inference-sdk` 0.3.0: gateway TDX + TLS SPKI binding, model TDX, NRAS GPU evidence required; live test passes
 - [x] PRIVATE_ROUTE only to verified eligible models; E2EE to attested key; no downgrade (tested with mock backend)
-- [~] **Gate:** attestation verifies live without a key; chat inference and response signatures need a NEAR API key (NEAR returns 401 without one), so users run `promptvpn near login` once
+- [x] Attestation verifies live without a key. Live chat inference intentionally not tested (Joshua); users add a NEAR key with `promptvpn near login`
 - [x] Default NEAR model `deepseek-ai/DeepSeek-V4.1-Flash-1017` (confirmed by Joshua); onboarding dropdown lists live NEAR models that pass attestation; `promptvpn near use <model>`
 
 ## Dashboard
@@ -73,3 +73,4 @@ Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked 
 - 2026-11-08: Demo videos (Remotion, real captures) in docs/demo/; repo public at github.com/numinousmuses/promptvpn; generated eval corpus no longer committed (fake keys tripped GitHub push protection).
 - 2026-11-08: Hosted CI removed at Joshua's request (one accidental run cancelled ~1 min in; Actions disabled on the repo). Local `scripts/check.sh` replaces it.
 - 2026-11-08: Clean-install gate passed on macOS from the signed release archive (see Phase 4).
+- 2026-11-08: Signing dropped for build-from-source `install.sh`; old signing key backed up to macOS Keychain; dashboard dist committed so source builds need only Rust.

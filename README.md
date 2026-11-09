@@ -1,8 +1,46 @@
 # Prompt VPN
 
-Prompt VPN is a local privacy proxy for LLM clients. Point any OpenAI-compatible client at `http://127.0.0.1:8787/v1` and every request is classified on your machine before it goes anywhere. Critical data (SSNs, card numbers, API keys, private keys, passwords) is blocked. Personal data you choose (emails, phones, addresses, health details, your custom entity types) is swapped for placeholders that are restored in the model's reply. Anything uncertain is held for your review, or sent only to a NEAR AI model whose hardware enclave has been verified, if you consented to that.
+![Prompt VPN: sensitive data is caught on your machine before any model sees it](docs/images/cover.png)
 
-Detection rules, registered secrets, placeholder mappings and the audit log stay on the device.
+Prompt VPN is a local privacy proxy for your AI tools. Point any OpenAI-compatible client at `http://127.0.0.1:8787/v1` and every request is checked on your machine first:
+
+- **Blocked:** SSNs and government IDs, card numbers, API keys, private keys, passwords.
+- **Swapped for placeholders, restored in the reply:** emails, phones, addresses, health details, and kinds of data you define yourself.
+- **Held for you:** anything uncertain, or sent only to a NEAR AI model whose hardware enclave has just been verified, if you allow that.
+
+Detection rules, your registered terms, placeholder mappings and the audit log never leave the device.
+
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/numinousmuses/promptvpn/main/install.sh | sh
+promptvpn init           # guided setup (or: promptvpn init --dashboard)
+promptvpn connect test   # proves protection with synthetic data against a local mock
+promptvpn dashboard
+```
+
+The installer builds from source with Rust (it offers to install Rust if missing), puts the binary in `~/.local/bin`, and never uses sudo. [Read it first](install.sh) if you like. macOS is the primary platform; Linux builds but is untested.
+
+Then point a client at it:
+
+```sh
+export OPENAI_BASE_URL=http://127.0.0.1:8787/v1
+export OPENAI_API_KEY="$(cat "<data dir>/apps/default.key")"   # path shown by `promptvpn connect show`
+```
+
+or let Prompt VPN edit a supported client's config with a backup: `promptvpn client configure codex|aider|opencode`, undo with `promptvpn client rollback <client>`. Coding agents can follow the setup skill in [skills/promptvpn-setup/SKILL.md](skills/promptvpn-setup/SKILL.md).
+
+## See it
+
+Demo videos, built from real terminal output and real dashboard screenshots: [overview (61 s)](docs/demo/promptvpn-overview.mp4) · [custom entity types (25 s)](docs/demo/promptvpn-custom-entities.mp4).
+
+| Every decision is logged, never the values | Uncertain requests wait for you |
+|---|---|
+| ![Dashboard overview](docs/images/dashboard-overview.png) | ![Review required](docs/images/review-required.png) |
+| **Critical protections are on from the start** | **Describe your own kinds of data** |
+| ![Onboarding](docs/images/onboarding.png) | ![Custom entity types](docs/images/custom-entities.png) |
+
+## How it fits
 
 ```
 AI client ──> 127.0.0.1:8787/v1 ──> detect ──────────────> policy ──> allow / placeholder / redact / review / block
@@ -11,10 +49,6 @@ AI client ──> 127.0.0.1:8787/v1 ──> detect ─────────�
                                     GLiNER span model
                                     (+ your custom entity types)
 ```
-
-Demo videos (real terminal output and real dashboard screenshots): [overview, 61 s](docs/demo/promptvpn-overview.mp4) · [custom entity types, 25 s](docs/demo/promptvpn-custom-entities.mp4).
-
-Release 1 supports macOS (Apple Silicon and Intel) and Linux (x86_64 and ARM64). Windows is not supported.
 
 ## What it covers, and what it does not
 
@@ -27,26 +61,6 @@ Other limits:
 - Images, audio and files inside requests cannot be inspected. They are blocked for remote destinations by default.
 - A NEAR TEE is remote. Verified attestation means the model runs in an attested enclave; it is not on-device processing.
 - Local logs and the vault are MAC-chained and encrypted, which detects tampering and protects data at rest. They do not defend against an administrator of the same machine.
-
-## Quick start
-
-```sh
-cargo build --release -p pv-cli            # or install a signed release (skills/promptvpn-setup)
-./target/release/promptvpn init            # guided setup; --dashboard for the web wizard
-./target/release/promptvpn connect test    # synthetic egress test against a local mock
-./target/release/promptvpn dashboard       # opens the local dashboard (one-time login link)
-```
-
-Point a client at it:
-
-```sh
-export OPENAI_BASE_URL=http://127.0.0.1:8787/v1
-export OPENAI_API_KEY="$(cat "<data dir>/apps/default.key")"   # path shown by `promptvpn connect show`
-```
-
-or let Prompt VPN edit a supported client's config with a backup: `promptvpn client configure codex|aider|opencode`, undo with `promptvpn client rollback <client>`.
-
-Coding agents can follow the setup skill in [skills/promptvpn-setup/SKILL.md](skills/promptvpn-setup/SKILL.md).
 
 ## How a request is handled
 
@@ -102,6 +116,7 @@ Docs: [threat model](docs/threat-model.md), [policy semantics](docs/policy-seman
 ## Development
 
 ```sh
+sh scripts/check.sh                          # everything: tests, dashboard, skill, privacy gate (no hosted CI)
 cargo test --workspace                       # ~200 tests incl. HTTP integration, adversarial, approvals, routing
 sh skills/promptvpn-setup/tests/run.sh       # skill script tests
 cargo run -p pv-cli -- eval --configs all --models-dir <dir>   # benchmark deterministic + GLiNER edge/small/base

@@ -17,7 +17,7 @@ Your job is to install it, configure it with the user's choices, prove it protec
 1. **Never put real secrets anywhere visible.** Do not ask the user to paste secrets into chat, do not echo them, do not put them in shell arguments, history, logs, screenshots or support requests. Secrets are entered by the user directly into `promptvpn` prompts (hidden input) or the local dashboard.
 2. **Ask before changing anything.** Show the plan and get explicit approval before: installing binaries, installing a background service, pulling models, editing any client config.
 3. **Never install Ollama or other system software yourself.** If missing, show the official instructions and wait for the user.
-4. **Never `curl | sh`.** Download, verify checksum and signature, then install.
+4. **Show before you run.** Point the user to `install.sh` and get approval before piping it to a shell.
 5. **Never pre-select consent.** TEE routing sends data off-device; only the user can enable it.
 6. **Use synthetic test data only** (the bundled egress test). Never test with the user's real data.
 7. Be explicit about coverage: Prompt VPN inspects requests sent to its API (including tool-call arguments and tool results inside them). It does **not** intercept shell, HTTP or browser tools an agent runs separately.
@@ -27,7 +27,6 @@ Your job is to install it, configure it with the user's choices, prove it protec
 Stop and report to the user (do not work around) when:
 - they decline a permission you need;
 - the client is not in the supported list below;
-- checksum or signature verification fails;
 - the synthetic protection test fails (`scripts/egress_test.sh` exit code ≠ 0);
 - a model download or identity verification fails;
 - secure key storage is unavailable (`promptvpn status` warns "data key is stored in a file") and the user has not explicitly accepted the degraded mode.
@@ -41,14 +40,14 @@ sh skills/promptvpn-setup/scripts/discover.sh
 It prints JSON: OS, CPU architecture, RAM, Ollama presence/version, whether `promptvpn` is installed, and which supported clients exist. It reads no secrets and changes nothing. Supported platforms: macOS (Apple Silicon, Intel) and Linux (x86_64, ARM64). Windows is not supported.
 
 ### 2. Explain the plan and get approval
-Tell the user, in a few lines: what will be installed and where (`~/.local/bin/promptvpn`, data in the OS data dir), that a background service is optional, which models will be downloaded (sizes below), and that client configs are only edited with their approval and can be rolled back.
+Tell the user, in a few lines: what will be installed and where (source in `~/.promptvpn/src`, binary in `~/.local/bin/promptvpn`, data in the OS data dir), that a background service is optional, which models will be downloaded (sizes below), and that client configs are only edited with their approval and can be rolled back.
 
-### 3. Install the binary (verified)
-If `promptvpn` is not installed, use a release archive:
+### 3. Install (build from source)
+If `promptvpn` is not installed, show the user the installer first (https://github.com/numinousmuses/promptvpn/blob/main/install.sh), get approval, then run:
 ```sh
-sh skills/promptvpn-setup/scripts/install.sh --archive <path-or-https-url-to-promptvpn-<os>-<arch>.tar.gz> --sums <SHA256SUMS> --sig <SHA256SUMS.sig>
+curl -fsSL https://raw.githubusercontent.com/numinousmuses/promptvpn/main/install.sh | sh
 ```
-The script verifies the SSH signature over `SHA256SUMS` with the pinned release key (`release-key.pub`), checks the archive hash, and installs into `~/.local/bin` without sudo. It refuses to install if verification fails. From a source checkout, `cargo build --release -p pv-cli` is the alternative.
+It clones the repository, builds it with Rust (offering to install Rust via rustup only after asking), and installs the binary to `~/.local/bin` without sudo. Needs git and a C compiler (`xcode-select --install` on macOS). Re-running updates it.
 
 ### 4. Detection model
 Prompt VPN's detection model is GLiNER PII (Apache-2.0). It runs inside Prompt VPN; no Ollama or GPU is needed. Let the user pick a size:
