@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { get, type PendingApproval } from '../api';
 import { categoryLabel, timeAgo } from '../format';
+import { useEntityLabels } from '../entities';
 import { href } from '../router';
 import { Badge, Card, Check, Empty, ErrorText, Loading, PageHeader, useLoad } from '../ui';
 
@@ -9,6 +10,7 @@ export function statusTone(s: string) {
 }
 
 export default function ApprovalsPage() {
+  useEntityLabels();
   const [all, setAll] = useState(false);
   const list = useLoad(() => get<{ approvals: PendingApproval[] }>(`/approvals?all=${all}`), [all], 10_000);
   return (

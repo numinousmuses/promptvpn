@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { registerBuiltinLabels } from '../entities';
 import {
   get,
   post,
@@ -6,22 +7,24 @@ import {
   type Action,
   type CategoryInfo,
   type CategoryState,
-  type ClassifierKindName,
+  type EntitiesResponse,
   type FallbackMode,
-  type ModelsStatus,
   type NearModel,
   type NearVerification,
   type OnboardingComplete,
   type OnboardingInfo,
   type ProviderEntry,
   type SettingsResponse,
+  type SpanInstallResult,
+  type SpanSize,
 } from '../api';
+import { megabytes } from '../format';
 import { href, navigate } from '../router';
 import { Badge, Button, Check, CopyButton, ErrorText, Field, Loading, Notice, Radio, SecretInput, Segmented, Toggle, TierBadge, errMessage, useAction } from '../ui';
 import { CriticalWarning } from './Categories';
-import { ConceptForm, type ConceptDraft } from './Concepts';
+import { EntityForm, type EntityDraft } from './Entities';
 import { KeyOnce } from './Apps';
-import { AttestationDetails, CLASSIFIERS, DEFAULT_NEAR_CANDIDATE, LFM_LICENSE_NOTE, PullProgress, isTeeCandidate, usePull } from './Models';
+import { AttestationDetails, DEFAULT_NEAR_CANDIDATE, SPAN_SIZES, isTeeCandidate, spanName, spanSizeOf } from './Models';
 import { ActionSelect } from './ApprovalDetail';
 
 const STEPS = 6;
@@ -38,6 +41,8 @@ interface Loaded {
   cats: CategoryState[];
   providers: ProviderEntry[];
   settings: SettingsResponse;
+  /** Labels of entity types that already exist (on a re-run), to catch duplicates. */
+  entityLabels: string[];
 }
 
 interface Draft {
@@ -45,11 +50,12 @@ interface Draft {
   critOn: Record<string, boolean>;
   categories: Record<string, Action>;
   secrets: { label: string; value: string; action: Action }[];
-  concepts: ConceptDraft[];
+  entities: EntityDraft[];
   fallbackMode: FallbackMode;
   teeConsent: boolean;
   localPrivate: boolean;
-  classifier: ClassifierKindName;
+  /** Detection model size to install, or 'none' for deterministic rules only. */
+  spanModel: SpanSize | 'none';
   nearSkip: boolean;
   nearKey: string;
   nearModel: string;
@@ -63,6 +69,15 @@ interface Draft {
   customAck: boolean;
   defaultDestination: string;
   notifications: boolean;
+}
+
+/** The installed, selected size; else the recommended size on a first run; else none. */
+function initialSpan(info: OnboardingInfo): SpanSize | 'none' {
+  const selected = info.span_options.find((o) => o.model === info.span_model.model);
+  if (selected?.installed) return spanSizeOf(selected.model)?.size ?? 'none';
+  if (info.state.completed && info.span_options.every((o) => !o.installed)) return 'none';
+  const def = info.span_options.find((o) => o.default);
+  return spanSizeOf(def?.model)?.size ?? 'base';
 }
 
 export default function OnboardingPage({ onDone }: { onDone: () => void }) {
@@ -80,9 +95,10 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
       get<{ categories: CategoryState[] }>('/categories'),
       get<{ providers: ProviderEntry[] }>('/providers'),
       get<SettingsResponse>('/settings'),
+      get<EntitiesResponse>('/entities').then((r) => (registerBuiltinLabels(r.builtin_labels), r)),
     ])
-      .then(([info, cats, providers, settings]) => {
-        setData({ info, cats: cats.categories, providers: providers.providers, settings });
+      .then(([info, cats, providers, settings, entities]) => {
+        setData({ info, cats: cats.categories, providers: providers.providers, settings, entityLabels: entities.entities.map((e) => e.entity.label) });
         const categories: Record<string, Action> = {};
         for (const c of cats.categories.filter((c) => !c.critical)) categories[c.id] = (c.action ?? info.defaults[c.id] ?? 'TOKENIZE') as Action;
         const critOn: Record<string, boolean> = {};
@@ -94,11 +110,11 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
           critOn,
           categories,
           secrets: [],
-          concepts: [],
+          entities: [],
           fallbackMode: settings.engine.fallback.mode === 'TEE_PRIVATE_ROUTE' ? 'TEE_PRIVATE_ROUTE' : 'BLOCK_AND_REVIEW',
           teeConsent: false, // never pre-checked, even on re-run
           localPrivate: settings.engine.fallback.local_private_handling,
-          classifier: info.classifier.kind === 'none' && !info.state.completed ? 'qwen3guard' : info.classifier.kind,
+          spanModel: initialSpan(info),
           nearSkip: false,
           nearKey: '',
           nearModel: near?.config.default_model ?? '',
@@ -132,6 +148,7 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
   if (result) return <Finished result={result} draft={draft} onDone={onDone} />;
 
   const existingNear = data.providers.find((p) => p.config.kind === 'NEAR_AI');
+  const needsDownload = draft.spanModel !== 'none' && !data.info.span_options.find((o) => spanSizeOf(o.model)?.size === draft.spanModel)?.installed;
 
   const validate = (): string | null => {
     if (step === 4 && draft.fallbackMode === 'TEE_PRIVATE_ROUTE' && !draft.teeConsent) return 'Verified NEAR TEE auto-route sends data off this device, so it needs your consent. Tick the box or choose block-and-review.';
@@ -167,7 +184,7 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
         fallback_mode: draft.fallbackMode,
         tee_consent: draft.fallbackMode === 'TEE_PRIVATE_ROUTE' && draft.teeConsent,
         local_private_handling: draft.localPrivate,
-        classifier: draft.classifier,
+        span_model: draft.spanModel === 'none' ? null : draft.spanModel,
         near: draft.nearSkip ? { skip: true } : { skip: false, model: draft.nearModel, ...(draft.nearKey ? { api_key: draft.nearKey } : {}) },
         ...(draft.ollamaOn ? { ollama_generation: { model: draft.ollamaModel.trim() } } : {}),
         ...(draft.customOn
@@ -184,7 +201,7 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
         ...(draft.defaultDestination ? { default_destination: draft.defaultDestination } : {}),
         notifications: draft.notifications,
         secrets: draft.secrets,
-        concepts: draft.concepts,
+        entities: draft.entities.map((e) => ({ label: e.label, action: e.action, ...(e.description ? { description: e.description } : {}) })),
       };
       const r = await post<OnboardingComplete>('/onboarding/complete', body);
       // Critical categories the owner switched back on during a re-run.
@@ -201,7 +218,7 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
     'Critical data stays blocked',
     'Choose what stays private',
     'When Prompt VPN is unsure',
-    'Models and private inference',
+    'Detection model and destinations',
     'Notifications and connect',
   ];
 
@@ -221,10 +238,13 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
         <h1>{titles[step - 1]}</h1>
         {step === 1 ? <Step1 info={data.info} /> : null}
         {step === 2 ? <Step2 cats={data.cats} draft={draft} set={set} /> : null}
-        {step === 3 ? <Step3 cats={data.cats} draft={draft} set={set} /> : null}
+        {step === 3 ? <Step3 cats={data.cats} draft={draft} set={set} existingEntities={data.entityLabels} /> : null}
         {step === 4 ? <Step4 draft={draft} set={set} /> : null}
         {step === 5 ? <Step5 info={data.info} draft={draft} set={set} existingNear={existingNear} providers={data.providers} /> : null}
         {step === 6 ? <Step6 draft={draft} set={set} info={data.info} /> : null}
+        {step === STEPS && submit.busy && needsDownload ? (
+          <Notice tone="info">Saving your policy, then downloading and verifying the detection model. This can take a minute.</Notice>
+        ) : null}
         <ErrorText error={stepErr || submit.error} />
       </div>
       <div className="wizard-foot">
@@ -253,7 +273,7 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
           </Button>
         ) : (
           <Button variant="primary" busy={submit.busy} onClick={finish}>
-            Finish setup
+            {submit.busy && needsDownload ? 'Downloading the detection model' : 'Finish setup'}
           </Button>
         )}
       </div>
@@ -286,7 +306,7 @@ function Step1({ info }: { info: OnboardingInfo }) {
       <div className="stack">
         <div>
           <div className="section-title">What happens locally</div>
-          <p className="muted">Detection (pattern recognizers, GLiNER and a small classifier model), your policy, the encrypted vault and the audit log all run here. Audit entries never contain prompt text.</p>
+          <p className="muted">Detection (pattern rules, your exact values and a small GLiNER detection model), your policy, the encrypted vault and the audit log all run here. Audit entries never contain prompt text.</p>
         </div>
         <div>
           <div className="section-title">Your local API</div>
@@ -357,13 +377,14 @@ function Step2({ cats, draft, set }: { cats: CategoryState[]; draft: Draft; set:
 
 // ------------------------------------------------------------------ step 3
 
-function Step3({ cats, draft, set }: { cats: CategoryState[]; draft: Draft; set: (p: Partial<Draft>) => void }) {
+function Step3({ cats, draft, set, existingEntities }: { cats: CategoryState[]; draft: Draft; set: (p: Partial<Draft>) => void; existingEntities: string[] }) {
   const other = cats.filter((c) => !c.critical);
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
   const [vAction, setVAction] = useState<Action>('BLOCK');
   const [showValue, setShowValue] = useState(false);
-  const [showConcept, setShowConcept] = useState(false);
+  const [showEntity, setShowEntity] = useState(false);
+
   return (
     <>
       <p className="lede">Prompt VPN scans your prompts and keeps the information you choose private before it ever leaves your device.</p>
@@ -450,29 +471,33 @@ function Step3({ cats, draft, set }: { cats: CategoryState[]; draft: Draft; set:
 
         <div className="option-row" style={{ borderTop: '1px solid var(--line)' }}>
           <div className="li-main">
-            <div className="li-title">Custom concepts</div>
-            <div className="li-sub">Topics without a fixed format, e.g. project codenames or unreleased specs. Optional.</div>
+            <div className="li-title">Custom entity types</div>
+            <div className="li-sub">Kinds of information with no fixed format, like an insurance policy number or a project codename. The detection model finds them in free text. Optional.</div>
           </div>
-          <Toggle label="Add custom concepts" checked={showConcept} onChange={setShowConcept} />
+          <Toggle label="Add custom entity types" checked={showEntity} onChange={setShowEntity} />
         </div>
-        {showConcept ? (
-          <ConceptForm
-            submitLabel="Add concept"
-            onSubmit={async (c) => {
-              set({ concepts: [...draft.concepts, c] });
-            }}
-          />
+        {showEntity ? (
+          <>
+            {draft.spanModel === 'none' ? <Notice tone="warn">Custom entity types need a detection model. Pick a size in step 5, or prompts that need one are held for review.</Notice> : null}
+            <EntityForm
+              submitLabel="Add entity type"
+              existing={[...existingEntities, ...draft.entities.map((x) => x.label)]}
+              onSubmit={async (e) => {
+                set({ entities: [...draft.entities, e] });
+              }}
+            />
+          </>
         ) : null}
-        {draft.concepts.length ? (
+        {draft.entities.length ? (
           <div className="list">
-            {draft.concepts.map((c, i) => (
+            {draft.entities.map((e, i) => (
               <div className="list-item" key={i}>
                 <div className="li-main">
-                  <div className="li-title">{c.name}</div>
-                  <div className="li-sub ellipsis">{c.description}</div>
+                  <div className="li-title">{e.label}</div>
+                  {e.description ? <div className="li-sub ellipsis">{e.description}</div> : null}
                 </div>
-                <Badge tone="outline">{c.action}</Badge>
-                <Button small variant="ghost" onClick={() => set({ concepts: draft.concepts.filter((_, j) => j !== i) })}>
+                <Badge tone="outline">{e.action}</Badge>
+                <Button small variant="ghost" onClick={() => set({ entities: draft.entities.filter((_, j) => j !== i) })}>
                   Remove
                 </Button>
               </div>
@@ -489,7 +514,7 @@ function Step3({ cats, draft, set }: { cats: CategoryState[]; draft: Draft; set:
 function Step4({ draft, set }: { draft: Draft; set: (p: Partial<Draft>) => void }) {
   return (
     <>
-      <p className="lede">Sometimes a finding is uncertain, or the local classifier fails. Choose what happens then. Explicit block rules always win.</p>
+      <p className="lede">Sometimes a finding is uncertain, or the local detection model is unavailable. Choose what happens then. Explicit block rules always win.</p>
       <div className="stack">
         <div className={`radio-card${draft.fallbackMode === 'TEE_PRIVATE_ROUTE' ? ' selected' : ''}`}>
           <Radio name="fb" checked={draft.fallbackMode === 'TEE_PRIVATE_ROUTE'} onChange={() => set({ fallbackMode: 'TEE_PRIVATE_ROUTE' })}>
@@ -572,7 +597,7 @@ function Step5({
   const eligible = Object.values(checks).filter((v) => v.eligible);
   const candidates = (models ?? []).filter(isTeeCandidate).filter((m) => !checks[m.id]);
   const specAlias = models?.find((m) => m.aliases.includes(info.spec_preferred_model));
-  const ollamaTags = (info.ollama.models ?? []).filter((t) => !/qwen3guard|lfm3/i.test(t));
+  const ollamaTags = (info.ollama.models ?? []).filter((t) => !/guard/i.test(t));
   const destOptions = useMemo(() => {
     const list = providers.map((p) => ({ id: p.config.id, label: `${p.config.display_name} (${p.config.declared_tier})` }));
     const add = (id: string, label: string) => !list.some((x) => x.id === id) && list.push({ id, label });
@@ -584,36 +609,34 @@ function Step5({
 
   return (
     <>
-      <p className="lede">A small local model checks prompts for your concepts. Replies come from the destination you pick here.</p>
+      <p className="lede">A small detection model on this computer finds names, health details and your custom entity types in free text. Replies come from the destination you pick here.</p>
 
-      <div className="section-title">Local classifier</div>
+      <div className="section-title">Detection model</div>
       <div className="stack-s">
-        {CLASSIFIERS.map((c) => (
-          <div key={c.kind} className={`radio-card${draft.classifier === c.kind ? ' selected' : ''}`}>
-            <Radio name="cls" checked={draft.classifier === c.kind} onChange={() => set({ classifier: c.kind })}>
-              <strong>{c.name}</strong>
-              <div className="muted small">{c.blurb}</div>
-              {c.kind === 'lfm3' ? <div className="small" style={{ marginTop: 4 }}>{LFM_LICENSE_NOTE}</div> : null}
-              {c.kind !== 'none' && info.ollama.reachable ? (
-                <div style={{ marginTop: 4 }}>{info.ollama.installed?.[c.kind] ? <Badge>installed</Badge> : <Badge tone="outline">will need a download</Badge>}</div>
-              ) : null}
-            </Radio>
-          </div>
-        ))}
+        {SPAN_SIZES.map((x) => {
+          const opt = info.span_options.find((o) => o.model === x.model);
+          return (
+            <div key={x.size} className={`radio-card${draft.spanModel === x.size ? ' selected' : ''}`}>
+              <Radio name="span" checked={draft.spanModel === x.size} onChange={() => set({ spanModel: x.size })}>
+                <span className="row gap-s">
+                  <strong>{x.name}</strong>
+                  <span className="muted small">{megabytes(opt?.size_bytes)}</span>
+                  {opt?.default ? <Badge tone="dark">recommended</Badge> : null}
+                  {opt?.installed ? <Badge>installed</Badge> : <Badge tone="outline">downloads at the end</Badge>}
+                </span>
+                <div className="muted small">{x.blurb}</div>
+              </Radio>
+            </div>
+          );
+        })}
+        <div className={`radio-card${draft.spanModel === 'none' ? ' selected' : ''}`}>
+          <Radio name="span" checked={draft.spanModel === 'none'} onChange={() => set({ spanModel: 'none' })}>
+            <strong>None, rules only</strong>
+            <div className="muted small">Critical data, structured PII and exact values are still caught. Free-text names, health details and custom entity types are not; prompts that need the model are held for review.</div>
+          </Radio>
+        </div>
       </div>
-      {info.ollama.reachable ? (
-        <p className="muted small">
-          Ollama {info.ollama.version} is running at {info.ollama.url}. GLiNER PII Edge runs separately and can be installed at the end.
-        </p>
-      ) : (
-        <Notice tone="warn">
-          Ollama is not reachable at {info.ollama.url}. {info.ollama.install ?? ''}{' '}
-          <a href="https://ollama.com/download" target="_blank" rel="noreferrer noopener">
-            Download Ollama
-          </a>
-          . You can finish setup now and pull the model later from Models & destinations.
-        </Notice>
-      )}
+      <p className="muted small">The model downloads from Hugging Face at a pinned revision and is checked against sha256 hashes before it loads. You can change the size later under Models & destinations.</p>
 
       <div className="section-title">Private inference with NEAR AI (recommended)</div>
       <div className={`radio-card${!draft.nearSkip ? ' selected' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -692,6 +715,15 @@ function Step5({
         <Check checked={draft.ollamaOn} onChange={(v) => set({ ollamaOn: v })}>
           Use a local Ollama model for replies (LOCAL, stays on this computer)
         </Check>
+        {draft.ollamaOn && !info.ollama.reachable ? (
+          <Notice tone="warn">
+            Ollama is not running. {info.ollama.install ?? ''}{' '}
+            <a href="https://ollama.com/download" target="_blank" rel="noreferrer noopener">
+              Download Ollama
+            </a>
+            . You can save the destination now and start Ollama later.
+          </Notice>
+        ) : null}
         {draft.ollamaOn ? (
           <Field label="Ollama model">
             <input className="input mono" list="ob-ollama" value={draft.ollamaModel} onChange={(e) => set({ ollamaModel: e.target.value })} placeholder="qwen3.5:4b" />
@@ -781,8 +813,8 @@ function Step6({ draft, set, info }: { draft: Draft; set: (p: Partial<Draft>) =>
           <dd>{draft.fallbackMode === 'TEE_PRIVATE_ROUTE' ? 'Verified NEAR TEE auto-route (consented)' : 'Block locally and review'}</dd>
         </div>
         <div className="kv-row">
-          <dt>Classifier</dt>
-          <dd>{CLASSIFIERS.find((c) => c.kind === draft.classifier)?.name}</dd>
+          <dt>Detection model</dt>
+          <dd>{draft.spanModel === 'none' ? 'None, rules only' : spanName(SPAN_SIZES.find((x) => x.size === draft.spanModel)?.model)}</dd>
         </div>
         <div className="kv-row">
           <dt>NEAR AI</dt>
@@ -793,9 +825,9 @@ function Step6({ draft, set, info }: { draft: Draft; set: (p: Partial<Draft>) =>
           <dd>{[draft.ollamaOn ? `Ollama ${draft.ollamaModel}` : '', draft.customOn ? `Custom ${draft.customUrl}` : ''].filter(Boolean).join(', ') || 'None added'}</dd>
         </div>
         <div className="kv-row">
-          <dt>Exact values / concepts</dt>
+          <dt>Exact values / custom entities</dt>
           <dd>
-            {draft.secrets.length} / {draft.concepts.length}
+            {draft.secrets.length} / {draft.entities.length}
           </dd>
         </div>
         <div className="kv-row">
@@ -811,17 +843,14 @@ function Step6({ draft, set, info }: { draft: Draft; set: (p: Partial<Draft>) =>
 // ------------------------------------------------------------------ done
 
 function Finished({ result, draft, onDone }: { result: OnboardingComplete; draft: Draft; onDone: () => void }) {
-  const [models, setModels] = useState<ModelsStatus | null>(null);
-  const reload = () => get<ModelsStatus>('/models').then(setModels).catch(() => {});
+  const [span, setSpan] = useState(result.span_model ?? null);
+  const retry = useAction();
   useEffect(() => {
-    void reload();
     onDone();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const pull = usePull(() => void reload());
-  const gliner = useAction();
-  const needsPull = draft.classifier !== 'none' && models && models.ollama.reachable && !models.ollama.installed?.[draft.classifier];
-  const needsGliner = models && models.span.compiled && !models.span.loaded;
+  const spanErr = span && 'error' in span ? span.error : null;
+  const spanOk = span && !('error' in span) ? span : null;
   return (
     <WizardFrame right={<span className="small muted">Setup saved</span>}>
       <div className="wizard-body">
@@ -839,33 +868,37 @@ function Finished({ result, draft, onDone }: { result: OnboardingComplete; draft
             <p className="muted small">You already have an app key, so no new key was created. Create more under Apps.</p>
           </div>
         )}
-        {needsPull || pull.job ? (
-          <div className="stack-s">
-            <div className="section-title">Download the classifier</div>
-            <p className="muted small">{CLASSIFIERS.find((c) => c.kind === draft.classifier)?.name} is not installed in Ollama yet. Prompt VPN checks the download against pinned hashes.</p>
-            {needsPull ? (
+        <div className="stack-s">
+          <div className="section-title">Detection model</div>
+          {draft.spanModel === 'none' ? (
+            <p className="muted small">
+              Running on rules and exact values only.{draft.entities.length ? ' Your custom entity types need a model, so prompts that need one are held for review.' : ''} <a href={href('/models')}>Install a detection model</a> any time.
+            </p>
+          ) : spanOk ? (
+            spanOk.loaded ? (
+              <Notice tone="ok">{spanName(spanOk.model)} is installed, verified and loaded.</Notice>
+            ) : (
+              <Notice tone="warn">{spanName(spanOk.model)} is installed but did not load{spanOk.status?.error ? `: ${spanOk.status.error}` : ''}. Check Models & destinations.</Notice>
+            )
+          ) : (
+            <>
+              <Notice tone="warn">The detection model was not installed{spanErr ? `: ${spanErr}` : ''}. Your policy is saved; prompts that need the model are held for review until it is installed.</Notice>
               <div>
-                <Button busy={pull.busy || pull.running} onClick={() => pull.start(draft.classifier)}>
-                  Pull model
+                <Button
+                  busy={retry.busy}
+                  onClick={() =>
+                    retry.run(async () => {
+                      setSpan(await post<SpanInstallResult>('/models/install', { model: draft.spanModel }));
+                    })
+                  }
+                >
+                  {retry.busy ? 'Downloading' : 'Try the download again'}
                 </Button>
               </div>
-            ) : null}
-            <PullProgress job={pull.job} />
-            <ErrorText error={pull.error} />
-          </div>
-        ) : null}
-        {needsGliner ? (
-          <div className="stack-s">
-            <div className="section-title">Install GLiNER PII Edge</div>
-            <p className="muted small">The span-level PII model is not loaded yet.</p>
-            <div>
-              <Button busy={gliner.busy} onClick={() => gliner.run(async () => { await post('/models/gliner/install'); await reload(); })}>
-                Install GLiNER
-              </Button>
-            </div>
-            <ErrorText error={gliner.error} />
-          </div>
-        ) : null}
+              <ErrorText error={retry.error} />
+            </>
+          )}
+        </div>
         <div className="stack-s">
           <div className="section-title">Connect your agent</div>
           <p className="muted small">

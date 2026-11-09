@@ -1,7 +1,9 @@
 // Loads every dashboard page in headless Chromium, saves full-page screenshots
 // to screenshots/, and fails if any page logs a console error, throws, or gets
-// a failed API response. Read-only: it opens dialogs and cancels them, walks
-// the onboarding wizard without pressing Finish, and never approves anything.
+// a failed API response. Nearly read-only: it opens dialogs and cancels them,
+// walks the onboarding wizard without pressing Finish, and never approves
+// anything. The only writes are a temporary custom entity type (added through
+// the UI, then removed through the UI) and detection-model test runs.
 //
 //   PV_DAEMON_URL=http://127.0.0.1:8799 \
 //   PV_ADMIN_TOKEN_FILE=/tmp/pv-e2e-home/admin.token \
@@ -100,6 +102,10 @@ if (pending) {
   await shot('08-review-save-as-rule', null, async () => {
     await page.getByRole('button', { name: 'Save as rule' }).click();
   });
+  await shot('08b-review-save-as-entity', null, async () => {
+    await page.getByRole('radio', { name: 'Custom entity type' }).click();
+    await page.getByPlaceholder('insurance policy number').fill('employee badge number');
+  });
   await page.getByRole('button', { name: 'Cancel' }).click();
 }
 await shot('09-policies', '/policies');
@@ -119,13 +125,42 @@ await shot('13-categories-disable-critical', null, async () => {
 });
 await page.getByRole('button', { name: 'Keep protection on' }).click();
 await shot('14-secrets', '/secrets');
-await shot('15-concepts', '/concepts');
+const TEMP_ENTITY = 'screenshot badge number';
+const hadTemp = (await adminGet('/entities')).entities.some((e) => e.entity.label === TEMP_ENTITY);
+await shot('15-entities', '/entities');
+if (!hadTemp) {
+  await shot('15b-entities-added', null, async () => {
+    await page.getByPlaceholder('insurance policy number').fill(TEMP_ENTITY);
+    await page.getByRole('button', { name: 'Add entity type' }).click();
+    await page.getByText(`Added "${TEMP_ENTITY}"`).waitFor();
+  });
+  await shot('15c-entities-remove-confirm', null, async () => {
+    await page.locator('.list-item', { hasText: TEMP_ENTITY }).getByRole('button', { name: 'Remove' }).click();
+  });
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove' }).click();
+  await page.getByText(`Removed "${TEMP_ENTITY}"`).waitFor();
+  if ((await adminGet('/entities')).entities.some((e) => e.entity.label === TEMP_ENTITY)) problems.push('[entities] temporary entity was not removed');
+}
+await shot('15d-entities-builtin-label', '/entities', async () => {
+  await page.getByPlaceholder('insurance policy number').fill('Email address');
+  await page.getByText('already covered by the built-in category').waitFor();
+});
 await shot('16-apps', '/apps');
 await shot('17-models', '/models');
+await shot('17b-models-test-detection', null, async () => {
+  await page.getByRole('button', { name: 'Test detection' }).click();
+  await page.getByText(/spans? found in/).waitFor({ timeout: 30_000 });
+});
 await shot('18-settings', '/settings');
 await shot('19-health', '/health');
 for (let step = 1; step <= 6; step++) {
   await shot(`2${step}-onboarding-step-${step}`, step === 1 ? '/onboarding' : null, async () => {
+    if (step === 3) {
+      await page.getByRole('switch', { name: 'Add custom entity types' }).click();
+      await page.getByPlaceholder('insurance policy number').fill('claim reference');
+      await page.getByRole('button', { name: 'Add entity type' }).click();
+    }
+    if (step === 5) await page.getByText('Detection model', { exact: true }).waitFor();
     if (step === 5) await page.getByText('Verified model').waitFor();
     if (step === 5) await page.waitForTimeout(4000); // attestation check
   });

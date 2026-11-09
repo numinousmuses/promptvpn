@@ -1,10 +1,12 @@
 import { get, type AuditEvent } from '../api';
 import { ActionBadge, Severity } from '../components';
 import { categoryLabel, dateTime, eventTitle } from '../format';
+import { useEntityLabels } from '../entities';
 import { href } from '../router';
 import { Card, ErrorText, KV, Loading, PageHeader, useLoad } from '../ui';
 
 export default function EventDetailPage({ id }: { id: string }) {
+  useEntityLabels();
   const ev = useLoad(() => get<AuditEvent>('/events/' + encodeURIComponent(id)), [id]);
   const e = ev.data;
   return (

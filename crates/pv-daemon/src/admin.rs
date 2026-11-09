@@ -453,7 +453,7 @@ async fn remove_secret(State(st): St, Path(id): Path<String>) -> R {
 // ------------------------------------------------------------------ custom entity types
 
 async fn list_entities(State(st): St) -> R {
-    Ok(Json(json!({"entities": state::entities(&st)?, "span_model_loaded": st.engine.detector.span_loaded()})))
+    Ok(Json(json!({"entities": state::entities(&st)?, "span_model_loaded": st.engine.detector.span_loaded(), "builtin_labels": builtin_labels()})))
 }
 
 #[derive(Deserialize)]
@@ -470,14 +470,24 @@ fn default_tokenize() -> Action {
     Action::Tokenize
 }
 
-pub fn add_entity_inner(st: &AppState, e: AddEntity) -> Result<String, ApiErr> {
-    let label = normalize_label(&e.label).ok_or_else(|| bad("label must be 2..60 letters, digits or spaces"))?;
-    if pv_detectors::span::GLINER_LABELS.iter().any(|(l, _)| *l == label) {
+fn builtin_labels() -> Vec<&'static str> {
+    pv_detectors::span::GLINER_LABELS.iter().map(|(l, _)| *l).collect()
+}
+
+/// Validate a label without writing anything. Returns the normalized label.
+pub fn check_entity_label(st: &AppState, raw: &str, pending: &[String]) -> Result<String, ApiErr> {
+    let label = normalize_label(raw).ok_or_else(|| bad("label must be 2..60 letters, digits or spaces"))?;
+    if builtin_labels().contains(&label.as_str()) {
         return Err(bad(format!("'{label}' is already a built-in category")));
     }
-    if state::entities(st)?.iter().any(|x| x.entity.label == label) {
+    if state::entities(st)?.iter().any(|x| x.entity.label == label) || pending.contains(&label) {
         return Err(bad(format!("'{label}' already exists")));
     }
+    Ok(label)
+}
+
+pub fn add_entity_inner(st: &AppState, e: AddEntity) -> Result<String, ApiErr> {
+    let label = check_entity_label(st, &e.label, &[])?;
     let id = format!("ent_{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
     let se = StoredEntity { entity: CustomEntity { id: id.clone(), label: label.clone(), description: e.description }, action: e.action, created_at: Utc::now().to_rfc3339() };
     st.vault().put_sealed("entity", &id, &serde_json::to_vec(&se)?)?;
@@ -904,6 +914,7 @@ async fn onboarding(State(st): St) -> R {
         "defaults": default_category_choices(),
         "span_model": sel,
         "span_options": st.models.status()["options"],
+        "builtin_labels": builtin_labels(),
         "ollama": ollama_status().await,
         "near_default_base": pv_provider::near::DEFAULT_NEAR_BASE,
         "spec_preferred_model": pv_provider::near::SPEC_PREFERRED_MODEL,
@@ -981,6 +992,28 @@ pub struct SecretSetup {
 }
 
 pub async fn complete_onboarding_inner(st: &AppState, p: OnboardingPayload) -> Result<Value, ApiErr> {
+    // 0. Validate everything that can be rejected before writing anything.
+    let mut seen = Vec::new();
+    for e in &p.entities {
+        seen.push(check_entity_label(st, &e.label, &seen)?);
+    }
+    for sec in &p.secrets {
+        pv_detectors::exact::validate_entry(ExactKind::Value, &sec.value, default_norm()).map_err(|e| bad(format!("secret '{}': {e}", sec.label)))?;
+    }
+    for e in &p.critical_exceptions {
+        if e.confirm != format!("DISABLE {}", e.category) {
+            return Err(ApiErr(StatusCode::PRECONDITION_REQUIRED, format!("critical exception for {} needs confirm = \"DISABLE {}\"", e.category, e.category)));
+        }
+    }
+    if let Some(c) = &p.custom {
+        if !c.acknowledged_privacy_tier {
+            return Err(bad("custom endpoints are EXTERNAL_UNVERIFIED; acknowledge the privacy tier to add one"));
+        }
+        url_ok(&c.base_url)?;
+    }
+    if let Some(m) = &p.span_model {
+        crate::models::resolve_name(m).ok_or_else(|| bad("span_model must be edge, small or base"))?;
+    }
     // 1. Category choices (noncritical) and deliberate critical exceptions.
     for (cat, action) in &p.categories {
         if category::is_critical(cat) {

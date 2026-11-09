@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { del, get, post, type Action, type DestinationTier, type PlaygroundResult, type PolicyHistoryEntry, type PolicyRule } from '../api';
 import type { Direction, OverrideMode, ScopeKind, Sensitivity } from '../generated/types';
 import { ActionBadge } from '../components';
-import { categoryLabel, dateTime, download, shortHash } from '../format';
+import { withEntityLabels, categoryLabel, dateTime, download, shortHash } from '../format';
+import { useEntityLabels } from '../entities';
 import { href, useRoute } from '../router';
 import {
   Badge,
@@ -44,6 +45,7 @@ function blankRule(): PolicyRule {
 }
 
 export default function PoliciesPage() {
+  useEntityLabels();
   const { query } = useRoute();
   const focus = query.get('rule');
   const pol = useLoad(() => get<{ rules: PolicyRule[]; effective_policy_hash: string }>('/policies'), []);
@@ -291,7 +293,7 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: PolicyRule; onClose: () 
             <input className="input" value={r.description ?? ''} onChange={(e) => setR({ ...r, description: e.target.value })} />
           </Field>
         </div>
-        <Field label="Categories" hint="Comma separated. * for all, CONCEPT:* for all concepts, EXACT_SECRET:<id> for one value.">
+        <Field label="Categories" hint="Comma separated. * for all, CUSTOM:* for all custom entities, EXACT_SECRET:<id> for one value.">
           <input className="input mono" value={cats} onChange={(e) => setCats(e.target.value)} placeholder="EMAIL, PHONE" />
         </Field>
         <Field label="Destinations" hint="any, external, local, attested_tee, external_unverified, or dest:<id>">
@@ -390,6 +392,7 @@ function HistoryDialog({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 function Playground() {
+  useEntityLabels();
   const [text, setText] = useState('Email jane@example.com about invoice 4111 1111 1111 1111.');
   const [tier, setTier] = useState<DestinationTier>('EXTERNAL_UNVERIFIED');
   const [direction, setDirection] = useState<'inbound' | 'outbound'>('inbound');
@@ -417,7 +420,7 @@ function Playground() {
           </Field>
           <div style={{ paddingBottom: 9 }}>
             <Check checked={models} onChange={setModels}>
-              Use local models (slower)
+              Use the detection model
             </Check>
           </div>
           <div className="grow" />
@@ -472,7 +475,7 @@ function Playground() {
             {res.decision.explanations.length ? (
               <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
                 {res.decision.explanations.map((x, i) => (
-                  <li key={i}>{x}</li>
+                  <li key={i}>{withEntityLabels(x)}</li>
                 ))}
               </ul>
             ) : null}

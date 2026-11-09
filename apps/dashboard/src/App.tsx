@@ -10,7 +10,7 @@ import ApprovalDetailPage from './pages/ApprovalDetail';
 import PoliciesPage from './pages/Policies';
 import CategoriesPage from './pages/Categories';
 import SecretsPage from './pages/Secrets';
-import ConceptsPage from './pages/Concepts';
+import EntitiesPage from './pages/Entities';
 import AppsPage from './pages/Apps';
 import ModelsPage from './pages/Models';
 import SettingsPage from './pages/Settings';
@@ -33,7 +33,7 @@ const NAV: { path: string; label: string }[] = [
   { path: '/policies', label: 'Policies' },
   { path: '/categories', label: 'Categories' },
   { path: '/secrets', label: 'Secrets' },
-  { path: '/concepts', label: 'Concepts' },
+  { path: '/entities', label: 'Custom entities' },
   { path: '/apps', label: 'Apps' },
   { path: '/models', label: 'Models & destinations' },
   { path: '/settings', label: 'Settings' },
@@ -186,6 +186,11 @@ function StatusChip({ ov }: { ov: Overview | null }) {
   );
 }
 
+function Redirect({ to }: { to: string }) {
+  useEffect(() => navigate(to), [to]);
+  return null;
+}
+
 function Page({ parts }: { parts: string[] }): ReactNode {
   const [a, b] = parts;
   switch (a) {
@@ -202,8 +207,10 @@ function Page({ parts }: { parts: string[] }): ReactNode {
       return <CategoriesPage />;
     case 'secrets':
       return <SecretsPage />;
-    case 'concepts':
-      return <ConceptsPage />;
+    case 'entities':
+      return <EntitiesPage />;
+    case 'concepts': // old bookmark
+      return <Redirect to="/entities" />;
     case 'apps':
       return <AppsPage />;
     case 'models':

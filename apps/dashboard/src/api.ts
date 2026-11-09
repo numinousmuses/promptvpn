@@ -162,16 +162,23 @@ export interface SecretMeta {
   created_at: string;
 }
 
-export interface StoredConcept {
-  concept: { id: string; name: string; description: string; safe_examples: string[]; sensitive_examples: string[] };
+export interface CustomEntity {
+  id: string;
+  label: string;
+  description: string;
+}
+
+/** An owner-defined entity type. The detection model finds it in free text and reports `CUSTOM:<id>`. */
+export interface StoredEntity {
+  entity: CustomEntity;
   action: Action;
   created_at: string;
 }
 
-export interface GuidanceNote {
-  id: string;
-  text: string;
-  created_at: string;
+export interface EntitiesResponse {
+  entities: StoredEntity[];
+  span_model_loaded: boolean;
+  builtin_labels?: string[];
 }
 
 export interface AppRecord {
@@ -226,68 +233,73 @@ export interface ProviderTest {
   detail: { reply?: string | null; receipt?: unknown; error?: string };
 }
 
-export type ClassifierKindName = 'qwen3guard' | 'lfm3' | 'none';
-
 export interface OllamaStatus {
-  url: string;
   reachable: boolean;
   version?: string | null;
-  installed?: { qwen3guard?: boolean; lfm3?: boolean };
   models?: string[];
   install?: string;
   error?: string;
 }
 
-export interface ClassifierStatus {
-  selected: string;
-  active: boolean;
-  model: string | null;
-  verified_digest: string | null;
-  error: string | null;
-}
+/** Detection model sizes accepted by /models/install and /onboarding/complete. */
+export type SpanSize = 'edge' | 'small' | 'base';
+export type SpanModelName = 'gliner-pii-edge' | 'gliner-pii-small' | 'gliner-pii-base';
 
 export interface SpanStatus {
   compiled: boolean;
+  model: string | null;
+  revision: string | null;
   provisioned: boolean;
   loaded: boolean;
-  revision: string | null;
+  size_bytes: number | null;
+  installing: boolean;
   error: string | null;
 }
 
-export interface PullJob {
-  id: string;
-  model: string;
-  status: string;
-  completed: number;
-  total: number;
-  done: boolean;
-  error: string | null;
-  verified_digest: string | null;
+export interface SpanOption {
+  model: SpanModelName;
+  size_bytes: number;
+  revision: string;
+  installed: boolean;
+  default: boolean;
 }
 
-export interface GenerativeLock {
-  display_name: string;
-  purpose?: string;
-  upstream?: string;
+export interface SpanLockEntry {
+  source?: string;
+  revision?: string;
   license?: string;
-  ollama_pull?: string;
+  encoder?: string;
+  threshold?: number;
 }
 
 export interface DetectorSettings {
-  semantic_mode: string;
   span_enabled: boolean;
   span_required: boolean;
-  semantic_timeout_ms: number;
+  span_timeout_ms: number;
 }
 
 export interface ModelsStatus {
-  classifier: ClassifierStatus;
   span: SpanStatus;
-  jobs: PullJob[];
-  lock: { generative?: Record<string, GenerativeLock>; span?: Record<string, { source?: string; license?: string; revision?: string }> };
-  selection: { kind: ClassifierKindName; ollama_url: string };
-  ollama: OllamaStatus;
+  options: SpanOption[];
+  lock: { default_span_model?: string; span?: Record<string, SpanLockEntry> };
+  selection: { model: string };
   detector: DetectorSettings;
+  ollama: OllamaStatus;
+}
+
+/** Response of POST /models/install and /models/select. */
+export interface SpanInstallResult {
+  model: string;
+  loaded: boolean;
+  status: SpanStatus;
+}
+
+export interface ModelTestResult {
+  latency_ms: number;
+  span_latency_ms: number | null;
+  findings: { category: string; text: string | null; confidence: number; recognizer: string }[];
+  failures: string[];
+  recognizers: string[];
 }
 
 export interface EngineSettings {
@@ -300,7 +312,7 @@ export interface EngineSettings {
   mapping_ttl_minutes?: number;
   pending_ttl_minutes: number;
   retention_days: number;
-  outbound_semantic: boolean;
+  outbound_span_model: boolean;
   restore_placeholders: boolean;
   emergency_stop: boolean;
 }
@@ -330,7 +342,7 @@ export interface SettingsResponse {
   engine: EngineSettings;
   detector: DetectorSettings;
   notifications: NotificationSettings;
-  classifier: { kind: ClassifierKindName; ollama_url: string };
+  span_model: { model: string };
   onboarding: OnboardingStateInfo;
   consents: Consent[];
 }
@@ -339,7 +351,8 @@ export interface OnboardingInfo {
   state: OnboardingStateInfo;
   categories: CategoryInfo[];
   defaults: Record<string, Action>;
-  classifier: { kind: ClassifierKindName; ollama_url: string };
+  span_model: { model: string };
+  span_options: SpanOption[];
   ollama: OllamaStatus;
   near_default_base: string;
   spec_preferred_model: string;
@@ -353,6 +366,8 @@ export interface OnboardingComplete {
   base_url: string;
   api_key: string | null;
   near_status: string;
+  /** Present only when a detection model size was chosen. */
+  span_model?: SpanInstallResult | { error: string } | null;
 }
 
 export interface Health {
@@ -364,7 +379,6 @@ export interface Health {
   vault: { backend: string; secure: boolean; active_key: string };
   audit_chain: { ok: boolean; events?: number; error?: string };
   near: { status: string; verifications: NearVerification[] };
-  classifier: ClassifierStatus;
   span: SpanStatus;
   destinations: { id: string; kind: string; declared_tier: DestinationTier; enabled: boolean }[];
   default_destination: string | null;

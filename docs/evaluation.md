@@ -19,9 +19,9 @@ Raw results: `docs/eval/results-2026-11-08.json`.
 | config | critical escapes | decision accuracy | false-block rate | utility kept | p50 ms | p95 ms | model download |
 |---|---|---|---|---|---|---|---|
 | deterministic only | 1/103 | 0.881 | 0.000 | 0.891 | 0.2 | 1.7 | 0 |
-| + GLiNER edge | 1/103 | 0.922 | 0.000 | 0.908 | 10.6 | 17.1 | 46 MB |
-| + GLiNER small | 1/103 | 0.922 | 0.006 | 0.891 | 19.5 | 27.8 | 83 MB |
-| **+ GLiNER base (default)** | **1/103** | **0.944** | **0.006** | **0.912** | **20.9** | **28.1** | **197 MB** |
+| + GLiNER edge | 1/103 | 0.922 | 0.000 | 0.908 | 10.6 | 17.1 | 49 MB |
+| + GLiNER small | 1/103 | 0.922 | 0.006 | 0.891 | 19.5 | 27.8 | 86 MB |
+| **+ GLiNER base (default)** | **1/103** | **0.944** | **0.006** | **0.912** | **20.9** | **28.1** | **205 MB** |
 
 Recall / precision for the categories the model is there for:
 

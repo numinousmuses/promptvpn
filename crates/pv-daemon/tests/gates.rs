@@ -235,3 +235,18 @@ async fn entities_without_model_fail_closed() {
     assert_eq!(s, 428, "{v}");
     assert_eq!(h.rec.count(), 0);
 }
+
+#[tokio::test]
+async fn onboarding_rejects_bad_input_before_writing() {
+    let h = harness("mock-echo").await;
+    let before = h.st.engine.policy_hash();
+    let (s, _) = h.admin_post("/onboarding/complete", json!({
+        "categories": {"EMAIL": "REDACT"}, "fallback_mode": "BLOCK_AND_REVIEW", "near": {"skip": true},
+        "entities": [{"label": "employee id"}, {"label": "email address"}]
+    })).await;
+    assert_eq!(s, 400);
+    assert_eq!(h.st.engine.policy_hash(), before, "nothing applied");
+    let (_, e) = h.admin_get("/entities").await;
+    assert_eq!(e["entities"].as_array().unwrap().len(), 0);
+    assert!(e["builtin_labels"].as_array().unwrap().iter().any(|l| l == "email address"));
+}

@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { ACTIONS, ApiError, get, post, put, type Action, type ApprovalDetail, type CategoryState } from '../api';
+import { registerBuiltinLabels } from '../entities';
+import { ACTIONS, ApiError, get, post, put, type Action, type ApprovalDetail, type CategoryState, type EntitiesResponse } from '../api';
+import { invalidateEntityLabels, useEntityLabels } from '../entities';
 import { useShell } from '../App';
 import { RedactedText, Severity } from '../components';
-import { categoryLabel, dateTime, shortHash, timeAgo } from '../format';
+import { withEntityLabels, categoryLabel, dateTime, shortHash, timeAgo } from '../format';
 import { href } from '../router';
 import {
   Badge,
@@ -24,10 +26,12 @@ import {
   useLoad,
 } from '../ui';
 import { statusTone } from './Approvals';
+import { ENTITY_ACTIONS, SpanModelMissing, entityLabelProblem, normalizeEntityLabel } from './Entities';
 
-type RuleKind = 'exact' | 'category' | 'concept' | 'guidance';
+type RuleKind = 'exact' | 'category' | 'entity';
 
 export default function ApprovalDetailPage({ id }: { id: string }) {
+  useEntityLabels();
   const shell = useShell();
   const d = useLoad(() => get<ApprovalDetail>('/approvals/' + encodeURIComponent(id)), [id]);
   const act = useAction();
@@ -146,7 +150,7 @@ export default function ApprovalDetailPage({ id }: { id: string }) {
         <KV
           rows={[
             ['Detected', a.categories.length ? a.categories.map(categoryLabel).join(', ') : 'Uncertain content'],
-            ['Reason', a.reason],
+            ['Reason', a.reason ? withEntityLabels(a.reason) : a.reason],
             ['Policy', <span className="mono small" title={a.policy_hash}>{shortHash(a.policy_hash, 16)}</span>],
             ['Action', ev ? ev.action : 'REQUIRE_APPROVAL'],
             ['Severity', ev ? <Severity s={ev.severity} /> : null],
@@ -313,22 +317,20 @@ function RevealInline({ id, onRevealed }: { id: string; onRevealed: (b: unknown)
 
 function SaveRuleDialog({ categories, onClose, onSaved }: { categories: string[]; onClose: () => void; onSaved: (t: string) => void }) {
   const builtin = categories.filter((c) => !c.includes(':'));
-  const [kind, setKind] = useState<RuleKind>(builtin.length ? 'category' : 'concept');
+  const [kind, setKind] = useState<RuleKind>(builtin.length ? 'category' : 'exact');
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
   const [valueAction, setValueAction] = useState<Action>('BLOCK');
   const [cat, setCat] = useState(builtin[0] ?? '');
   const [catAction, setCatAction] = useState<Action>('BLOCK');
-  const [name, setName] = useState('');
-  const [desc, setDesc] = useState('');
-  const [sens, setSens] = useState('');
-  const [safe, setSafe] = useState('');
-  const [conceptAction, setConceptAction] = useState<Action>('BLOCK');
-  const [note, setNote] = useState('');
+  const [entLabel, setEntLabel] = useState('');
+  const [entDesc, setEntDesc] = useState('');
+  const [entAction, setEntAction] = useState<Action>('TOKENIZE');
   const [typed, setTyped] = useState<null | { cat: string; action: Action }>(null);
   const cats = useLoad(() => get<{ categories: CategoryState[] }>('/categories'), []);
+  const ents = useLoad(() => get<EntitiesResponse>('/entities').then((r) => (registerBuiltinLabels(r.builtin_labels), r)), []);
   const act = useAction();
-  const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean);
+  const entProblem = entLabel.trim() ? entityLabelProblem(entLabel, ents.data?.entities.map((e) => e.entity.label) ?? []) : null;
 
   const save = () =>
     act.run(async () => {
@@ -349,14 +351,13 @@ function SaveRuleDialog({ categories, onClose, onSaved }: { categories: string[]
           throw e;
         }
         onSaved(`${info?.label ?? cat} now uses ${catAction}.`);
-      } else if (kind === 'concept') {
-        if (!name.trim() || !desc.trim()) throw new Error('Name and description are required.');
-        await post('/concepts', { name, description: desc, sensitive_examples: lines(sens), safe_examples: lines(safe), action: conceptAction });
-        onSaved(`Saved semantic concept "${name}".`);
       } else {
-        if (!note.trim()) throw new Error('Write a note first.');
-        await post('/guidance', { text: note });
-        onSaved('Saved a guidance note for the classifier.');
+        if (!entLabel.trim()) throw new Error('Describe what to look for.');
+        if (entProblem) throw new Error(entProblem);
+        const label = normalizeEntityLabel(entLabel);
+        const r = await post<{ entity_id: string; span_model_loaded: boolean }>('/entities', { label, action: entAction, ...(entDesc.trim() ? { description: entDesc.trim() } : {}) });
+        invalidateEntityLabels();
+        onSaved(`Saved custom entity type "${label}" with action ${entAction}.${r.span_model_loaded ? '' : ' No detection model is loaded yet, so matching prompts are held for review until you install one.'}`);
       }
       onClose();
     });
@@ -401,8 +402,7 @@ function SaveRuleDialog({ categories, onClose, onSaved }: { categories: string[]
         options={[
           { value: 'exact', label: 'Exact value' },
           { value: 'category', label: 'Category action' },
-          { value: 'concept', label: 'Semantic concept' },
-          { value: 'guidance', label: 'Guidance note' },
+          { value: 'entity', label: 'Custom entity type' },
         ]}
       />
       {kind === 'exact' ? (
@@ -437,31 +437,26 @@ function SaveRuleDialog({ categories, onClose, onSaved }: { categories: string[]
           </Field>
         </div>
       ) : null}
-      {kind === 'concept' ? (
-        <div className="form-grid">
-          <Field label="Name">
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Project codenames" />
-          </Field>
-          <Field label="Action">
-            <ActionSelect value={conceptAction} onChange={setConceptAction} options={['BLOCK', 'REQUIRE_APPROVAL', 'PRIVATE_ROUTE', 'FALLBACK', 'REDACT']} />
-          </Field>
-          <div className="full">
-            <Field label="Description" hint="Describe what counts, in plain words. The local classifier reads this.">
-              <textarea className="input" value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} />
+      {kind === 'entity' ? (
+        <div className="stack">
+          <p className="muted small">
+            For information with no fixed format that the detection model should find in any prompt, like "insurance policy number". For one exact string, use Exact value instead.
+          </p>
+          <div className="form-grid">
+            <Field label="What to look for" hint={entProblem ?? 'In plain words.'}>
+              <input className="input" value={entLabel} onChange={(e) => setEntLabel(e.target.value)} placeholder="insurance policy number" maxLength={60} aria-invalid={!!entProblem} />
             </Field>
+            <Field label="Action">
+              <ActionSelect value={entAction} onChange={setEntAction} options={ENTITY_ACTIONS} />
+            </Field>
+            <div className="full">
+              <Field label="Description (optional)">
+                <input className="input" value={entDesc} onChange={(e) => setEntDesc(e.target.value)} />
+              </Field>
+            </div>
           </div>
-          <Field label="Sensitive examples" hint="One per line">
-            <textarea className="input" value={sens} onChange={(e) => setSens(e.target.value)} rows={3} />
-          </Field>
-          <Field label="Safe examples" hint="One per line">
-            <textarea className="input" value={safe} onChange={(e) => setSafe(e.target.value)} rows={3} />
-          </Field>
+          {ents.data && !ents.data.span_model_loaded ? <SpanModelMissing /> : null}
         </div>
-      ) : null}
-      {kind === 'guidance' ? (
-        <Field label="Guidance note" hint="A short instruction added to the local classifier prompt, up to 1000 characters.">
-          <textarea className="input" value={note} onChange={(e) => setNote(e.target.value)} rows={4} maxLength={1000} />
-        </Field>
       ) : null}
       <ErrorText error={act.error} />
     </Dialog>

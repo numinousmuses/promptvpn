@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { get, post, type Health } from '../api';
-import { duration, shortHash, timeAgo } from '../format';
+import { duration, megabytes, timeAgo } from '../format';
+import { href } from '../router';
+import { spanName, spanState } from './Models';
 import { Badge, Button, Card, ErrorText, KV, Loading, Notice, PageHeader, TierBadge, useAction, useLoad } from '../ui';
 
 interface SentNotification {
@@ -74,16 +76,16 @@ export default function HealthPage() {
                 ]}
               />
             </Card>
-            <Card title="Detectors">
+            <Card title="Detection model" actions={<a className="small" href={href('/models')}>Manage</a>}>
               <KV
                 rows={[
-                  ['Classifier', `${d.classifier.selected}${d.classifier.active ? ' (active)' : ' (inactive)'}`],
-                  ['Classifier model', d.classifier.model ? <span className="mono">{d.classifier.model}</span> : null],
-                  ['Identity digest', d.classifier.verified_digest ? <span className="mono small">{shortHash(d.classifier.verified_digest, 28)}</span> : null],
-                  ['Classifier error', d.classifier.error],
-                  ['GLiNER', d.span.loaded ? 'loaded' : d.span.provisioned ? 'provisioned, not loaded' : 'not installed'],
-                  ['GLiNER revision', d.span.revision ? <span className="mono small">{d.span.revision.slice(0, 12)}</span> : null],
-                  ['GLiNER error', d.span.error],
+                  ['Status', <Badge tone={spanState(d.span).tone}>{spanState(d.span).label}</Badge>],
+                  ['Model', d.span.model ? <span>{spanName(d.span.model)} <span className="muted mono small">{d.span.model}</span></span> : null],
+                  ['Size', megabytes(d.span.size_bytes)],
+                  ['Revision', d.span.revision ? <span className="mono small">{d.span.revision.slice(0, 12)}</span> : null],
+                  ['Runtime compiled in', d.span.compiled ? 'Yes' : 'No'],
+                  ['Error', d.span.error],
+                  ['Rules and exact values', 'Always on'],
                 ]}
               />
             </Card>

@@ -52,9 +52,9 @@ Prompt VPN's detection model is GLiNER PII (Apache-2.0). It runs inside Prompt V
 
 | Size | Download | Notes |
 |---|---|---|
-| `base` | ~197 MB | Recommended: best accuracy in the bundled benchmark, ~20 ms per request |
-| `small` | ~83 MB | |
-| `edge` | ~46 MB | Lowest memory |
+| `base` | ~205 MB | Recommended: best accuracy in the bundled benchmark, ~20 ms per request |
+| `small` | ~86 MB | |
+| `edge` | ~49 MB | Lowest memory |
 | `none` | 0 | Deterministic recognizers only; names and free-text details are not detected |
 
 Files are pinned by revision and SHA-256 in `models.lock.json` and verified before use. Ollama is optional and only matters if the user wants a local model to *answer* requests (`promptvpn ollama status`; if missing, show the official instructions it prints and wait for the user).

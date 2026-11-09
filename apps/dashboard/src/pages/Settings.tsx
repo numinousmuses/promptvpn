@@ -81,7 +81,7 @@ export default function SettingsPage() {
 
       {saved ? <Notice tone="ok">{saved}</Notice> : null}
 
-      <Card title="Uncertain findings and classifier failures">
+      <Card title="Uncertain findings and detector failures">
         <div className="stack">
           <div className={`radio-card${fb.mode === 'BLOCK_AND_REVIEW' ? ' selected' : ''}`}>
             <Radio name="fallback" checked={fb.mode === 'BLOCK_AND_REVIEW'} onChange={() => setFb({ mode: 'BLOCK_AND_REVIEW' })}>
@@ -168,28 +168,31 @@ export default function SettingsPage() {
             <Check checked={engine.restore_placeholders} onChange={(v) => setEngine({ ...engine, restore_placeholders: v })}>
               Restore tokenized values in model replies before they reach your client
             </Check>
-            <Check checked={engine.outbound_semantic} onChange={(v) => setEngine({ ...engine, outbound_semantic: v })}>
-              Run the semantic classifier on model replies too (slower)
-            </Check>
           </div>
-          <Field label="Semantic classifier">
-            <select className="input" value={detector.semantic_mode} onChange={(e) => setDetector({ ...detector, semantic_mode: e.target.value })}>
-              <option value="always">Every request</option>
-              <option value="when_concepts">Only when concepts are configured</option>
-              <option value="off">Off</option>
-            </select>
-          </Field>
-          <Field label="Classifier timeout (ms)">
-            <input className="input" type="number" min={500} step={500} value={detector.semantic_timeout_ms} onChange={(e) => setDetector({ ...detector, semantic_timeout_ms: Number(e.target.value) })} />
-          </Field>
+        </div>
+      </Card>
+
+      <Card title="Detection model">
+        <div className="form-grid">
+          <div className="full">
+            <p className="muted small">
+              Active model: <span className="mono">{s.data.span_model.model || 'none'}</span>. Install or change the size under <a href={href('/models')}>Models & destinations</a>.
+            </p>
+          </div>
           <div className="full stack-s">
             <Check checked={detector.span_enabled} onChange={(v) => setDetector({ ...detector, span_enabled: v })}>
-              Use GLiNER span recognition
+              Use the detection model on prompts
             </Check>
             <Check checked={detector.span_required} onChange={(v) => setDetector({ ...detector, span_required: v })}>
-              Fail closed if GLiNER is unavailable
+              Hold prompts for review if the detection model is unavailable (fail closed)
+            </Check>
+            <Check checked={engine.outbound_span_model} disabled={!detector.span_enabled} onChange={(v) => setEngine({ ...engine, outbound_span_model: v })}>
+              Also scan model output with the detection model (adds about 20 ms per reply)
             </Check>
           </div>
+          <Field label="Detection model timeout (ms)" hint="A prompt that takes longer counts as a detector failure. Default 10000.">
+            <input className="input" type="number" min={500} step={500} value={detector.span_timeout_ms} onChange={(e) => setDetector({ ...detector, span_timeout_ms: Number(e.target.value) })} />
+          </Field>
         </div>
       </Card>
 
@@ -228,7 +231,7 @@ export default function SettingsPage() {
             <div className="li-main">
               <div className="li-title">Re-run setup</div>
               <div className="li-sub">
-                Walk through the six setup steps again. Exact values, concepts, apps and history are kept.
+                Walk through the six setup steps again. Exact values, custom entities, apps and history are kept.
                 {s.data.onboarding.completed_at ? ` Last completed ${dateTime(s.data.onboarding.completed_at)}.` : ''}
               </div>
             </div>

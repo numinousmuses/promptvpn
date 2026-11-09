@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { getText, get, post, type AuditEvent } from '../api';
 import { ActionBadge, Severity } from '../components';
 import { categoryLabel, dateTime, download, eventTitle, timeAgo } from '../format';
+import { useEntityLabels } from '../entities';
 import { navigate } from '../router';
 import { Button, Card, Empty, ErrorText, Field, Loading, Notice, PageHeader, useAction, useLoad } from '../ui';
 
 const PAGE = 50;
 const ACTION_FILTERS = ['', 'ALLOW', 'TRANSFORM', 'BLOCK', 'REQUIRE_APPROVAL', 'PRIVATE_ROUTE', 'OUTPUT_BLOCK', 'ERROR'];
 const SEVERITIES = ['', 'low', 'moderate', 'high', 'critical'];
-const KINDS = ['', 'request', 'response', 'approval', 'policy', 'settings', 'secret', 'concept', 'provider', 'model', 'app', 'attestation', 'vault', 'admin'];
+const KINDS = ['', 'request', 'response', 'approval', 'policy', 'settings', 'secret', 'entity', 'provider', 'model', 'app', 'attestation', 'vault', 'admin'];
 
 export default function ActivityPage() {
+  useEntityLabels();
   const [action, setAction] = useState('');
   const [severity, setSeverity] = useState('');
   const [kind, setKind] = useState('');

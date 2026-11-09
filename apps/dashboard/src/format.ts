@@ -1,4 +1,5 @@
 import type { AuditEvent } from './generated/types';
+import { entityLabel } from './entities';
 
 export function timeAgo(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -96,9 +97,28 @@ export function eventTitle(e: AuditEvent): string {
 }
 
 export function categoryLabel(c: string): string {
-  if (c.startsWith('CONCEPT:')) return 'Concept ' + c.slice(8);
+  if (c === 'CUSTOM:*') return 'All custom entities';
+  if (c.startsWith('CUSTOM:')) {
+    const label = entityLabel(c.slice(7));
+    return label ? label.charAt(0).toUpperCase() + label.slice(1) : 'Custom entity';
+  }
   if (c.startsWith('EXACT_SECRET:')) return 'Exact value ' + c.slice(13);
+  if (c === 'EXACT_SECRET') return 'Exact value';
   return titleCase(c);
+}
+
+/** Swap raw `CUSTOM:<id>` tokens in daemon prose for the entity's label. */
+export function withEntityLabels(text: string): string {
+  return text.replace(/CUSTOM:([A-Za-z0-9_]+)/g, (m, id: string) => {
+    const label = entityLabel(id);
+    return label ? `"${label}"` : m;
+  });
+}
+
+/** Bytes as decimal megabytes, e.g. 49408803 -> "49 MB". */
+export function megabytes(n: number | null | undefined): string {
+  if (!n) return '';
+  return `${Math.round(n / 1_000_000)} MB`;
 }
 
 export function download(filename: string, text: string, type = 'application/json'): void {

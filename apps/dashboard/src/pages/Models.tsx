@@ -3,7 +3,7 @@ import {
   del,
   get,
   post,
-  type ClassifierKindName,
+  type ModelTestResult,
   type ModelsStatus,
   type NearModel,
   type NearVerification,
@@ -11,8 +11,13 @@ import {
   type ProviderEntry,
   type ProviderTest,
   type SettingsResponse,
+  type SpanInstallResult,
+  type SpanModelName,
+  type SpanSize,
+  type SpanStatus,
 } from '../api';
-import { dateTime, shortHash } from '../format';
+import { useEntityLabels } from '../entities';
+import { categoryLabel, dateTime, megabytes } from '../format';
 import {
   Badge,
   Button,
@@ -27,7 +32,6 @@ import {
   Loading,
   Notice,
   PageHeader,
-  Radio,
   SecretInput,
   TierBadge,
   type Loaded,
@@ -36,77 +40,30 @@ import {
 } from '../ui';
 
 export const DEFAULT_NEAR_CANDIDATE = 'deepseek-ai/DeepSeek-V4.1-Flash-1017';
-export const LFM_LICENSE_NOTE = 'LFM Open License v1.0: commercial use is licensed only for organizations under USD 10M annual revenue.';
 
-export const CLASSIFIERS: { kind: ClassifierKindName; name: string; blurb: string }[] = [
-  { kind: 'qwen3guard', name: 'Qwen3Guard-Gen-0.6B', blurb: 'Small guard model for prompt moderation and PII categories. Apache-2.0.' },
-  { kind: 'lfm3', name: 'LFM3-1.7B', blurb: 'Concept classifier with schema-constrained output. Better at your custom concepts.' },
-  { kind: 'none', name: 'No generative classifier', blurb: 'Built-in recognizers, GLiNER and exact values only. Semantic concepts will not be checked.' },
+/** Per-size facts from docs/evaluation.md (270-case synthetic corpus, CPU, 2026-11-08). */
+export const SPAN_SIZES: { size: SpanSize; model: SpanModelName; name: string; blurb: string }[] = [
+  { size: 'edge', model: 'gliner-pii-edge', name: 'Edge', blurb: 'Smallest and fastest. 0.922 decision accuracy, 11 ms median per prompt.' },
+  { size: 'small', model: 'gliner-pii-small', name: 'Small', blurb: '0.922 decision accuracy, 20 ms median. Base is about as fast and more accurate.' },
+  { size: 'base', model: 'gliner-pii-base', name: 'Base', blurb: 'Most accurate. 0.944 decision accuracy, 21 ms median. Names found 89% of the time vs 26% with rules alone.' },
 ];
+
+export const spanSizeOf = (model: string | null | undefined) => SPAN_SIZES.find((x) => x.model === model);
+export const spanName = (model: string | null | undefined) => {
+  const m = spanSizeOf(model);
+  return m ? `GLiNER PII ${m.name}` : model ?? 'None';
+};
+
+export function spanState(s: SpanStatus): { label: string; tone: 'green' | 'outline' | 'red' } {
+  if (s.installing) return { label: 'installing', tone: 'outline' };
+  if (s.loaded) return { label: 'loaded', tone: 'green' };
+  if (s.error) return { label: 'error', tone: 'red' };
+  if (s.provisioned) return { label: 'installed, not loaded', tone: 'outline' };
+  return { label: 'not installed', tone: 'outline' };
+}
 
 /** TEE-capable NEAR candidates (before attestation). */
 export const isTeeCandidate = (m: NearModel) => m.attestation_supported && (m.privacy_tier === 'PRIVATE_TEE' || m.privacy_tier === 'PRIVATE_3P_TEE');
-
-// ------------------------------------------------------------------ pull progress
-
-export function usePull(onDone?: () => void) {
-  const [job, setJob] = useState<ModelsStatus['jobs'][number] | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const act = useAction();
-  useEffect(() => {
-    if (!jobId) return;
-    let stop = false;
-    const tick = async () => {
-      try {
-        const j = await get<ModelsStatus['jobs'][number]>('/models/jobs/' + encodeURIComponent(jobId));
-        if (stop) return;
-        setJob(j);
-        if (j.done) {
-          setJobId(null);
-          onDone?.();
-          return;
-        }
-      } catch (e) {
-        act.setError(e instanceof Error ? e.message : String(e));
-        setJobId(null);
-        return;
-      }
-      if (!stop) window.setTimeout(tick, 1000);
-    };
-    void tick();
-    return () => {
-      stop = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
-  const start = (kind: ClassifierKindName) =>
-    act.run(async () => {
-      setJob(null);
-      const r = await post<{ job: string }>('/models/pull', { kind });
-      setJobId(r.job);
-    });
-  return { job, running: !!jobId, start, error: act.error, busy: act.busy };
-}
-
-export function PullProgress({ job }: { job: ModelsStatus['jobs'][number] | null }) {
-  if (!job) return null;
-  const pct = job.total > 0 ? Math.min(100, Math.round((job.completed / job.total) * 100)) : job.done ? 100 : 0;
-  return (
-    <div className="stack-s">
-      <div className="row between small">
-        <span>
-          {job.model}: {job.status}
-        </span>
-        <span className="muted">{job.total ? `${pct}%` : ''}</span>
-      </div>
-      <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-        <span style={{ width: `${pct}%` }} />
-      </div>
-      {job.error ? <Notice tone="error">{job.error}</Notice> : null}
-      {job.done && !job.error && job.verified_digest ? <p className="small muted mono">verified {shortHash(job.verified_digest, 24)}</p> : null}
-    </div>
-  );
-}
 
 // ------------------------------------------------------------------ attestation
 
@@ -140,11 +97,8 @@ export default function ModelsPage() {
 
   return (
     <div className="content">
-      <PageHeader title="Models & destinations" subtitle="Local models that inspect prompts, and the destinations that generate replies. Every destination carries a privacy tier that policy enforces." />
-      <div className="grid-2">
-        <ClassifierCard m={models} />
-        <SpanCard m={models} />
-      </div>
+      <PageHeader title="Models & destinations" subtitle="The local detection model that inspects prompts, and the destinations that generate replies. Every destination carries a privacy tier that policy enforces." />
+      <DetectionModelCard m={models} />
       <DestinationsCard providers={providers} settings={settings.data} />
       <NearCard verifications={[...(providers.data?.attestations ?? []), ...(providers.data?.verifications ?? [])]} onChanged={() => providers.reload()} hasNear={!!providers.data?.providers.some((p) => p.config.kind === 'NEAR_AI')} />
       <div className="grid-2">
@@ -155,120 +109,178 @@ export default function ModelsPage() {
   );
 }
 
-function ClassifierCard({ m }: { m: Loaded<ModelsStatus> }) {
+function DetectionModelCard({ m }: { m: Loaded<ModelsStatus> }) {
+  const [installing, setInstalling] = useState<SpanSize | null>(null);
+  const [result, setResult] = useState<string | null>(null);
   const act = useAction();
-  const pull = usePull(() => void m.reload());
-  const test = useAction();
-  const [testRes, setTestRes] = useState<Record<string, unknown> | null>(null);
   const d = m.data;
-  const lock = d?.lock?.generative ?? {};
+  const serverInstalling = !!d?.span.installing;
+
+  // Another tab or the CLI may be installing: refresh until it finishes.
+  useEffect(() => {
+    if (!serverInstalling || installing) return;
+    const t = window.setInterval(() => void m.reload(), 3000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverInstalling, installing]);
+
+  if (!d) {
+    return (
+      <Card title="Detection model">
+        <ErrorText error={m.error} />
+        <Loading />
+      </Card>
+    );
+  }
+  const active = d.span.model ?? d.selection.model;
+  const st = spanState(d.span);
+  const lock = d.lock.span?.[active];
+  const busy = !!installing || serverInstalling || act.busy;
+
+  const install = (size: SpanSize) =>
+    act.run(async () => {
+      setInstalling(size);
+      setResult(null);
+      try {
+        const r = await post<SpanInstallResult>('/models/install', { model: size });
+        setResult(`${spanName(r.model)} installed, verified and ${r.loaded ? 'loaded' : 'selected, but it did not load'}.`);
+      } finally {
+        setInstalling(null);
+        await m.reload();
+      }
+    });
+  const select = (size: SpanSize) =>
+    act.run(async () => {
+      setResult(null);
+      const r = await post<SpanInstallResult>('/models/select', { model: size });
+      setResult(`Now using ${spanName(r.model)}${r.loaded ? '' : ', but it did not load'}.`);
+      await m.reload();
+    });
+
   return (
-    <Card title="Generative classifier">
-      {!d ? (
-        <>
-          <ErrorText error={m.error} />
-          <Loading />
-        </>
-      ) : (
+    <Card title="Detection model" actions={<Badge tone={st.tone}>{st.label}</Badge>}>
+      <div className="grid-2">
         <div className="stack">
-          <div className="stack-s">
-            {CLASSIFIERS.map((c) => {
-              const installed = c.kind === 'none' || d.ollama.installed?.[c.kind as 'lfm3' | 'qwen3guard'];
-              return (
-                <div key={c.kind} className={`radio-card${d.selection.kind === c.kind ? ' selected' : ''}`}>
-                  <Radio name="classifier" checked={d.selection.kind === c.kind} disabled={act.busy} onChange={() => act.run(async () => { await post('/models/select', { kind: c.kind }); await m.reload(); })}>
-                    <strong>{lock[c.kind]?.display_name ?? c.name}</strong>
-                    <div className="muted small">{c.blurb}</div>
-                    {c.kind === 'lfm3' ? <div className="small" style={{ marginTop: 4 }}>{lock.lfm3?.license ?? LFM_LICENSE_NOTE}</div> : null}
-                    {c.kind !== 'none' ? (
-                      <div className="small" style={{ marginTop: 4 }}>
-                        {installed ? <Badge tone="neutral">installed</Badge> : <Badge tone="outline">not installed</Badge>}
-                      </div>
-                    ) : null}
-                  </Radio>
-                </div>
-              );
-            })}
-          </div>
+          <p className="muted small">
+            A GLiNER span model running in an embedded ONNX runtime on this computer. It finds names, health details, addresses and your custom entity types in free text. Rules and exact values work without it.
+          </p>
           <KV
             rows={[
-              ['Status', d.classifier.active ? <Badge tone="green">active</Badge> : <Badge tone="outline">inactive</Badge>],
-              ['Model', d.classifier.model ? <span className="mono">{d.classifier.model}</span> : null],
-              ['Identity digest', d.classifier.verified_digest ? <span className="mono small">{d.classifier.verified_digest}</span> : null],
-              ['Error', d.classifier.error],
-              ['Ollama', d.ollama.reachable ? `reachable at ${d.ollama.url} (v${d.ollama.version})` : <span>not reachable at {d.ollama.url}</span>],
+              ['Active model', d.span.provisioned || d.span.loaded ? <span>{spanName(active)} <span className="muted mono small">{active}</span></span> : null],
+              ['State', d.span.loaded ? 'Loaded and in use' : d.span.provisioned ? 'Installed, not loaded' : 'Not installed (requests that need it are held for review)'],
+              ['Download size', megabytes(d.span.size_bytes)],
+              ['Revision', d.span.revision ? <span className="mono small">{d.span.revision.slice(0, 12)}</span> : null],
+              ['License', lock?.license],
+              ['Encoder', lock?.encoder ? <span className="mono small">{lock.encoder}</span> : null],
+              ['Runtime compiled in', d.span.compiled ? 'Yes' : <span style={{ color: 'var(--red)' }}>No, this build cannot run the model</span>],
+              ['Enabled in Settings', d.detector.span_enabled ? (d.detector.span_required ? 'Yes, fail closed if unavailable' : 'Yes') : 'No'],
+              ['Error', d.span.error],
             ]}
           />
-          {!d.ollama.reachable ? <Notice tone="warn">{d.ollama.install ?? 'Install Ollama from https://ollama.com/download'}</Notice> : null}
-          {d.selection.kind !== 'none' ? (
-            <div className="row gap-s">
-              <Button small busy={pull.busy || pull.running} disabled={!d.ollama.reachable} onClick={() => pull.start(d.selection.kind)}>
-                {d.ollama.installed?.[d.selection.kind] ? 'Re-pull and verify' : 'Pull model'}
-              </Button>
-              <Button small busy={test.busy} onClick={() => test.run(async () => setTestRes(await post('/models/test', {})))}>
-                Test detectors
-              </Button>
-            </div>
-          ) : null}
-          <PullProgress job={pull.job} />
-          {testRes ? (
-            <KV
-              rows={[
-                ['Categories', (testRes.categories as string[]).join(', ')],
-                ['Total latency', `${String(testRes.latency_ms)} ms`],
-                ['Semantic', testRes.semantic_latency_ms != null ? `${String(testRes.semantic_latency_ms)} ms` : null],
-                ['Span (GLiNER)', testRes.span_latency_ms != null ? `${String(testRes.span_latency_ms)} ms` : null],
-                ['Failures', (testRes.failures as string[]).join('; ')],
-              ]}
-            />
-          ) : null}
-          <ErrorText error={act.error || pull.error || test.error} />
         </div>
-      )}
+        <div className="stack-s">
+          <span className="field-label">Sizes</span>
+          {SPAN_SIZES.map((x) => {
+            const opt = d.options.find((o) => o.model === x.model);
+            const isActive = x.model === active && (d.span.loaded || d.span.provisioned);
+            return (
+              <div key={x.size} className={`radio-card${isActive ? ' selected' : ''}`}>
+                <div className="row between gap-s" style={{ alignItems: 'flex-start' }}>
+                  <div className="stack-s" style={{ gap: 4 }}>
+                    <div className="row gap-s">
+                      <strong>{x.name}</strong>
+                      <span className="muted small">{megabytes(opt?.size_bytes)}</span>
+                      {opt?.default ? <Badge tone="dark">recommended</Badge> : null}
+                    </div>
+                    <div className="muted small">{x.blurb}</div>
+                    <div className="row gap-s">
+                      {isActive ? <Badge tone="green">active</Badge> : null}
+                      {opt?.installed ? <Badge>installed</Badge> : <Badge tone="outline">not installed</Badge>}
+                    </div>
+                  </div>
+                  {isActive ? null : opt?.installed ? (
+                    <Button small disabled={busy || !d.span.compiled} onClick={() => select(x.size)}>
+                      Use this size
+                    </Button>
+                  ) : (
+                    <Button small variant={opt?.default ? 'primary' : 'secondary'} busy={installing === x.size} disabled={busy || !d.span.compiled} onClick={() => install(x.size)}>
+                      {installing === x.size ? 'Downloading' : 'Install'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {installing || serverInstalling ? (
+            <Notice tone="info">
+              <span className="row gap-s">
+                <span className="spinner" aria-hidden /> Downloading{installing ? ` ${spanName(SPAN_SIZES.find((x) => x.size === installing)?.model)}` : ''} and checking its sha256 against the pinned lock file. This can take a minute.
+              </span>
+            </Notice>
+          ) : null}
+          {result ? <Notice tone="ok">{result}</Notice> : null}
+          <ErrorText error={act.error} />
+        </div>
+      </div>
+      <TestDetection disabled={busy} />
     </Card>
   );
 }
 
-function SpanCard({ m }: { m: Loaded<ModelsStatus> }) {
+const SAMPLE_TEXT = 'Synthetic test: remind maria gonzalez (test.user@example.com) about her insulin refill. Her insurance policy number is HX-2291-0042; SSN 123-45-6789.';
+
+function TestDetection({ disabled }: { disabled: boolean }) {
+  const [text, setText] = useState(SAMPLE_TEXT);
+  const [res, setRes] = useState<ModelTestResult | null>(null);
   const act = useAction();
-  const d = m.data;
-  const lock = d?.lock?.span?.['gliner-pii-edge'];
+  useEntityLabels();
   return (
-    <Card title="GLiNER PII Edge">
-      {!d ? (
-        <Loading />
-      ) : (
-        <div className="stack">
-          <p className="muted small">Span-level PII recognizer running in an embedded ONNX runtime (not Ollama). Installed by default.</p>
-          <KV
-            rows={[
-              ['Status', d.span.loaded ? <Badge tone="green">loaded</Badge> : d.span.provisioned ? <Badge tone="outline">provisioned, not loaded</Badge> : <Badge tone="outline">not installed</Badge>],
-              ['Runtime compiled in', d.span.compiled ? 'Yes' : 'No'],
-              ['Revision', d.span.revision ? <span className="mono small">{d.span.revision}</span> : null],
-              ['License', lock?.license],
-              ['Enabled in detector', d.detector.span_enabled ? 'Yes' : 'No'],
-              ['Error', d.span.error],
-            ]}
-          />
-          <div>
-            <Button
-              small
-              busy={act.busy}
-              disabled={!d.span.compiled}
-              onClick={() =>
-                act.run(async () => {
-                  await post('/models/gliner/install');
-                  await m.reload();
-                })
-              }
-            >
-              {d.span.provisioned ? 'Reinstall and verify' : 'Install GLiNER'}
-            </Button>
+    <div className="stack" style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
+      <div className="row between">
+        <span className="section-title" style={{ margin: 0 }}>Test detection</span>
+        <span className="muted small">Runs rules, exact values and the detection model on this text. Nothing is sent or logged.</span>
+      </div>
+      <textarea className="input" rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label="Detection test text" />
+      <div className="row gap-s" style={{ justifyContent: 'flex-end' }}>
+        <Button variant="primary" busy={act.busy} disabled={disabled || !text.trim()} onClick={() => act.run(async () => setRes(await post<ModelTestResult>('/models/test', { text })))}>
+          Test detection
+        </Button>
+      </div>
+      <ErrorText error={act.error} />
+      {res ? (
+        <div className="stack-s">
+          <div className="small muted">
+            {res.findings.length} {res.findings.length === 1 ? 'span' : 'spans'} found in {res.latency_ms} ms
+            {res.span_latency_ms != null ? ` (detection model ${res.span_latency_ms} ms)` : ' (detection model did not run)'}
           </div>
-          <ErrorText error={act.error} />
+          {res.findings.length ? (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Found text</th>
+                  <th>Confidence</th>
+                  <th>Recognizer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {res.findings.map((f, i) => (
+                  <tr key={i}>
+                    <td>{categoryLabel(f.category)}</td>
+                    <td className="mono small">{f.text ?? <span className="muted">(whole field)</span>}</td>
+                    <td className="small">{f.confidence.toFixed(2)}</td>
+                    <td className="small mono">{f.recognizer}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <Empty>Nothing detected.</Empty>
+          )}
+          {res.failures.length ? <Notice tone="warn">Failures: {res.failures.join('; ')}</Notice> : null}
         </div>
-      )}
-    </Card>
+      ) : null}
+    </div>
   );
 }
 
@@ -543,11 +555,14 @@ function OllamaGenCard({ m, onSaved }: { m: ModelsStatus | null; onSaved: () => 
   const [url, setUrl] = useState('http://127.0.0.1:11434/v1');
   const [done, setDone] = useState(false);
   const act = useAction();
-  const tags = (m?.ollama.models ?? []).filter((t) => !/qwen3guard|lfm3/i.test(t));
+  const tags = (m?.ollama.models ?? []).filter((t) => !/guard/i.test(t));
   return (
-    <Card title="Local Ollama generation model">
+    <Card title="Ollama (optional local generation)" actions={m ? m.ollama.reachable ? <Badge tone="neutral">running{m.ollama.version ? ` v${m.ollama.version}` : ''}</Badge> : <Badge tone="outline">not running</Badge> : null}>
       <div className="stack">
-        <p className="muted small">Generates replies on this computer (tier LOCAL). Used as a fallback when NEAR is unavailable, and for private handling if you allow it in Settings.</p>
+        <p className="muted small">
+          Optional. Ollama can generate replies on this computer (tier LOCAL), as a fallback when NEAR is unavailable or for private handling if you allow it in Settings. Prompt VPN does not use Ollama for detection.
+        </p>
+        {m && !m.ollama.reachable ? <p className="small muted">{m.ollama.install ?? m.ollama.error ?? 'Install Ollama from https://ollama.com/download'}</p> : null}
         <Field label="Model" hint={m?.ollama.reachable ? 'Pick an installed model or type a name' : 'Ollama is not reachable'}>
           <input className="input mono" list="ollama-tags" value={model} onChange={(e) => setModel(e.target.value)} placeholder="qwen3.5:4b" />
           <datalist id="ollama-tags">

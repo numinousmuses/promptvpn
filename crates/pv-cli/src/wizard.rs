@@ -29,7 +29,7 @@ pub struct InitArgs {
     /// Allow a local Ollama generation model to handle content that needs privacy.
     #[arg(long)]
     pub local_private: bool,
-    /// Detection model size: edge (~50 MB), small (~90 MB), base (~210 MB), or none.
+    /// Detection model size: edge (~49 MB), small (~86 MB), base (~205 MB), or none.
     #[arg(long)]
     pub model: Option<String>,
     /// Finish local-only (NEAR_NOT_CONFIGURED).
