@@ -245,8 +245,19 @@ pub async fn bootstrap(paths: Paths, notifier: Option<Arc<dyn Notifier>>) -> Res
     });
     reload_entities(&state)?;
     reload_providers(&state)?;
+    // Load the detection model off the startup path. Until it is loaded, an
+    // installed model counts as required, so requests fail closed to review.
     let sel: SpanSelection = state.engine.db.setting("span_model")?.unwrap_or_default();
-    apply_span(&state, &sel.model);
+    if state.models.provisioned(&sel.model).is_ok() {
+        let mut ds = state.engine.detector.settings();
+        ds.span_required = true;
+        state.engine.detector.set_settings(ds);
+    }
+    let st2 = state.clone();
+    let model = sel.model.clone();
+    tokio::task::spawn_blocking(move || {
+        apply_span(&st2, &model);
+    });
     state.engine.housekeeping();
     Ok(state)
 }

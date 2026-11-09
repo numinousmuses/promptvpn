@@ -435,7 +435,7 @@ pub async fn start_daemon(paths: &Paths, port: u16) -> Result<()> {
     }
     let child = cmd.spawn().context("spawn daemon")?;
     pv_daemon::state::write_private(&paths.pid(), child.id().to_string().as_bytes())?;
-    for _ in 0..100 {
+    for _ in 0..600 {
         if api.healthy().await {
             return Ok(());
         }

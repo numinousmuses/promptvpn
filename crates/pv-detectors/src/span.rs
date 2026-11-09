@@ -106,8 +106,17 @@ pub fn plausible(category: &str, text: &str) -> bool {
     }
 }
 
+/// Model-only claims of critical data below this confidence are reported as
+/// UNCERTAIN (reviewed or privately routed) instead of hard-blocking.
+pub const CRITICAL_MIN_CONFIDENCE: f32 = 0.8;
+
 pub fn make_finding(category: &str, s: usize, e: usize, prob: f32, version: &str) -> Finding {
-    let mut f = Finding::new(ClassifierType::Builtin, category, s, e, prob.clamp(0.0, 1.0), "gliner-pii-edge", "span-model", sensitivity_of(category));
+    let (cat, evidence) = if is_critical(category) && prob < CRITICAL_MIN_CONFIDENCE {
+        (UNCERTAIN, format!("span-model:{category}"))
+    } else {
+        (category, "span-model".to_string())
+    };
+    let mut f = Finding::new(ClassifierType::Builtin, cat, s, e, prob.clamp(0.0, 1.0), "gliner-span", evidence, sensitivity_of(cat));
     f.classifier_version = version.into();
     f
 }
@@ -290,6 +299,13 @@ mod tests {
         assert!(plausible(HEALTH_INFORMATION, "type 2 diabetes"));
         assert!(plausible(PERSON, "Maria Gonzalez"));
         assert!(plausible(PERSON, "maria gonzalez"));
+    }
+
+    #[test]
+    fn low_confidence_critical_becomes_uncertain() {
+        assert_eq!(make_finding(DRIVER_LICENSE, 0, 5, 0.52, "v").category, UNCERTAIN);
+        assert_eq!(make_finding(DRIVER_LICENSE, 0, 5, 0.9, "v").category, DRIVER_LICENSE);
+        assert_eq!(make_finding(PERSON, 0, 5, 0.52, "v").category, PERSON);
     }
 
     #[test]
