@@ -129,7 +129,7 @@ export default function OnboardingPage({ onDone }: { onDone: () => void }) {
     );
   }
 
-  if (result) return <Finished result={result} draft={draft} data={data} onDone={onDone} />;
+  if (result) return <Finished result={result} draft={draft} onDone={onDone} />;
 
   const existingNear = data.providers.find((p) => p.config.kind === 'NEAR_AI');
 
@@ -810,7 +810,7 @@ function Step6({ draft, set, info }: { draft: Draft; set: (p: Partial<Draft>) =>
 
 // ------------------------------------------------------------------ done
 
-function Finished({ result, draft, data, onDone }: { result: OnboardingComplete; draft: Draft; data: Loaded; onDone: () => void }) {
+function Finished({ result, draft, onDone }: { result: OnboardingComplete; draft: Draft; onDone: () => void }) {
   const [models, setModels] = useState<ModelsStatus | null>(null);
   const reload = () => get<ModelsStatus>('/models').then(setModels).catch(() => {});
   useEffect(() => {
@@ -823,7 +823,7 @@ function Finished({ result, draft, data, onDone }: { result: OnboardingComplete;
   const needsPull = draft.classifier !== 'none' && models && models.ollama.reachable && !models.ollama.installed?.[draft.classifier];
   const needsGliner = models && models.span.compiled && !models.span.loaded;
   return (
-    <WizardFrame right={<span className="status-chip"><span className="dot" />Protected</span>}>
+    <WizardFrame right={<span className="small muted">Setup saved</span>}>
       <div className="wizard-body">
         <span className="wizard-step">Setup complete</span>
         <h1>You are set up</h1>
@@ -873,7 +873,6 @@ function Finished({ result, draft, data, onDone }: { result: OnboardingComplete;
           </p>
         </div>
         <p className="muted small mono">policy {result.policy_hash.slice(0, 23)}</p>
-        {data.cats.length === 0 ? null : null}
       </div>
       <div className="wizard-foot">
         <Button variant="link" onClick={() => navigate('/activity')}>

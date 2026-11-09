@@ -20,7 +20,7 @@ export function CriticalWarning({
 }) {
   const [action, setAction] = useState<Action>('ALLOW');
   return (
-    <TypedConfirmDialog title={`Turn off ${cat.label} protection?`} phrase={`DISABLE ${cat.id}`} confirmLabel="Turn off protection" onClose={onClose} onConfirm={(p) => onConfirm(action, p)}>
+    <TypedConfirmDialog title={`Turn off ${cat.label} protection?`} phrase={`DISABLE ${cat.id}`} confirmLabel="Turn off protection" cancelLabel="Keep protection on" onClose={onClose} onConfirm={(p) => onConfirm(action, p)}>
       <p>
         <strong>{cat.label}</strong> is a critical category. It is blocked by default because these values ({cat.examples.join(', ')}) can cause direct harm if they reach a remote model.
       </p>

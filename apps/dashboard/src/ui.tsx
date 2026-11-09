@@ -361,6 +361,7 @@ export function TypedConfirmDialog(props: {
   phrase: string;
   children: ReactNode;
   confirmLabel: string;
+  cancelLabel?: string;
   onConfirm: (phrase: string) => Promise<void> | void;
   onClose: () => void;
 }) {
@@ -373,7 +374,7 @@ export function TypedConfirmDialog(props: {
       onClose={props.onClose}
       footer={
         <>
-          <Button onClick={props.onClose}>Keep protection on</Button>
+          <Button onClick={props.onClose}>{props.cancelLabel ?? 'Cancel'}</Button>
           <Button
             variant="danger"
             disabled={!match}

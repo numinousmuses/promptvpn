@@ -213,7 +213,7 @@ fn recover_lfm(body: &str) -> Option<LfmOut> {
         let end = ids.get(i + 1).map(|n| n.start()).unwrap_or(body.len());
         let chunk = &body[m.start()..end];
         let id = ID.captures(chunk).map(|c| c[1].to_string()).unwrap_or_default();
-        let confidence = CONF.captures(chunk).and_then(|c| c[1].parse::<f32>().ok()).unwrap_or(0.7);
+        let Some(confidence) = CONF.captures(chunk).and_then(|c| c[1].parse::<f32>().ok()) else { continue };
         let evidence = EV.captures(chunk).map(|c| c[1].replace("\\\"", "\"")).unwrap_or_default();
         matches.push(LfmMatch { concept_id: id, confidence, evidence, isolatable: false });
     }

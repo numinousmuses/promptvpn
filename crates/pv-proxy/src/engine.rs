@@ -230,7 +230,7 @@ impl Engine {
     fn notify(&self, kind: &str, title: &str, cats: &[String], app: &str) {
         let names = summarize(cats, "");
         let names = names.trim_end_matches(": ").to_string();
-        self.notifier.notify(Notification { kind: kind.into(), title: title.into(), body: format!("{names} · app {app}"), categories: cats.to_vec() });
+        self.notifier.notify(Notification { kind: kind.into(), title: title.into(), body: format!("{names} · app {app}"), categories: cats.to_vec(), at: Utc::now().to_rfc3339() });
     }
 
     // ------------------------------------------------------------------ entry
@@ -777,11 +777,15 @@ impl Engine {
 pub fn redacted_preview(fields: &[Field], findings: &[Finding]) -> String {
     let mut parts = Vec::new();
     for (i, f) in fields.iter().enumerate() {
-        let mut spans: Vec<(usize, usize, String)> = findings.iter().filter(|x| x.field_index == i).map(|x| (x.start_byte, x.end_byte, x.category.clone())).collect();
-        if spans.iter().any(|s| s.0 == 0 && s.1 >= f.text.len()) || findings.iter().any(|x| x.field_index == i && x.whole_field) {
-            parts.push(format!("[REDACTED_{}]", pv_vault::token_label(&spans.first().map(|s| s.2.clone()).unwrap_or_else(|| "CONTENT".into()))));
+        let mut spans: Vec<(usize, usize, String)> = findings.iter().filter(|x| x.field_index == i && !x.whole_field).map(|x| (x.start_byte, x.end_byte, x.category.clone())).collect();
+        let whole: Vec<&Finding> = findings.iter().filter(|x| x.field_index == i && x.whole_field).collect();
+        // A whole-field judgement with nothing localized: mask the field entirely.
+        if spans.iter().any(|s| s.0 == 0 && s.1 >= f.text.len()) || (!whole.is_empty() && spans.is_empty()) {
+            let cat = whole.first().map(|w| w.category.clone()).or_else(|| spans.first().map(|s| s.2.clone())).unwrap_or_else(|| "CONTENT".into());
+            parts.push(format!("[REDACTED_{}]", pv_vault::token_label(&cat)));
             continue;
         }
+        let flag = if whole.is_empty() { String::new() } else { format!("\n[flagged: {} (whole message)]", whole.iter().map(|w| w.category.clone()).collect::<Vec<_>>().join(", ")) };
         spans.sort_by_key(|s| (s.0, std::cmp::Reverse(s.1)));
         let mut out = String::new();
         let mut pos = 0;
@@ -797,6 +801,7 @@ pub fn redacted_preview(fields: &[Field], findings: &[Finding]) -> String {
             pos = e;
         }
         out.push_str(&f.text[pos..]);
+        out.push_str(&flag);
         parts.push(out);
     }
     let all = parts.join("\n\n");

@@ -11,6 +11,9 @@ pub struct Notification {
     pub title: String,
     pub body: String,
     pub categories: Vec<String>,
+    /// RFC 3339 time the notification was raised.
+    #[serde(default)]
+    pub at: String,
 }
 
 pub trait Notifier: Send + Sync {
@@ -95,8 +98,15 @@ pub struct Recorder {
 }
 
 impl Notifier for Recorder {
-    fn notify(&self, n: Notification) {
-        self.sent.lock().unwrap().push(n);
+    fn notify(&self, mut n: Notification) {
+        if n.at.is_empty() {
+            n.at = chrono::Utc::now().to_rfc3339();
+        }
+        let mut v = self.sent.lock().unwrap();
+        v.push(n);
+        if v.len() > 500 {
+            v.drain(..100);
+        }
     }
 }
 
@@ -115,7 +125,7 @@ mod tests {
     fn rate_limit_and_filter() {
         let rec = Arc::new(Recorder::default());
         let rl = RateLimited::new(rec.clone(), NotificationSettings { enabled: true, kinds: vec!["block".into()], min_interval_secs: 60 });
-        let n = |k: &str| Notification { kind: k.into(), title: "t".into(), body: "b".into(), categories: vec![] };
+        let n = |k: &str| Notification { kind: k.into(), title: "t".into(), body: "b".into(), categories: vec![], at: String::new() };
         rl.notify(n("block"));
         rl.notify(n("block"));
         rl.notify(n("redaction"));

@@ -90,6 +90,11 @@ enum Cmd {
         #[command(subcommand)]
         cmd: ConnectCmd,
     },
+    /// Generation destinations (NEAR via `near login`).
+    Destination {
+        #[command(subcommand)]
+        cmd: DestCmd,
+    },
     /// Reversible edits to OpenAI-compatible client configs.
     Client {
         #[command(subcommand)]
@@ -317,6 +322,35 @@ enum ConnectCmd {
     },
     /// Validate OpenAI compatibility end to end against a local mock upstream.
     Test,
+}
+
+#[derive(Subcommand)]
+enum DestCmd {
+    List,
+    /// Add a local Ollama generation model (LOCAL tier).
+    AddOllama {
+        model: String,
+        #[arg(long, default_value = "http://127.0.0.1:11434/v1")]
+        url: String,
+    },
+    /// Add a custom OpenAI-compatible endpoint (EXTERNAL_UNVERIFIED). Key read hidden with --with-key.
+    AddCustom {
+        id: String,
+        url: String,
+        model: String,
+        #[arg(long)]
+        with_key: bool,
+        #[arg(long)]
+        allow_failover: bool,
+        /// Acknowledge this endpoint has no verified confidentiality.
+        #[arg(long)]
+        ack_external_unverified: bool,
+    },
+    Remove { id: String },
+    /// Make a destination the default for requests.
+    Default { id: String },
+    /// Connectivity and tier test with a synthetic prompt.
+    Test { id: String },
 }
 
 #[derive(Subcommand)]
@@ -737,6 +771,47 @@ async fn run(cli: Cli) -> Result<()> {
         Cmd::Approvals { cmd } => approvals(&paths, port, j, cmd).await?,
         Cmd::Connect { cmd } => connect(&paths, port, cmd).await?,
         Cmd::Client { cmd } => clients(&paths, port, cmd).await?,
+        Cmd::Destination { cmd } => {
+            let api = ensure_running(&paths, port).await?;
+            let base = |id: &str, kind: &str, url: &str, model: &str, tier: &str, fo: bool| json!({"schema_version": 1, "id": id, "kind": kind, "display_name": id, "base_url": url, "default_model": model, "declared_tier": tier, "enabled": true, "allow_failover": fo, "supports_responses": false, "timeout_secs": 300});
+            match cmd {
+                DestCmd::List => {
+                    let v = api.get("/providers").await?;
+                    let s = api.get("/settings").await?;
+                    print(j, &v, |v| {
+                        println!("default: {}  failover: {}", s["engine"]["default_destination"], s["engine"]["failover"]);
+                        for p in v["providers"].as_array().into_iter().flatten() {
+                            let c = &p["config"];
+                            println!("  {:<10} {:<18} {:<20} {:<40} model={} failover={} credential={}", c["id"].as_str().unwrap_or(""), c["kind"].as_str().unwrap_or(""), c["declared_tier"].as_str().unwrap_or(""), c["base_url"].as_str().unwrap_or(""), c["default_model"].as_str().unwrap_or(""), c["allow_failover"], p["has_credential"]);
+                        }
+                    });
+                }
+                DestCmd::AddOllama { model, url } => {
+                    api.post("/providers", base("ollama", "OLLAMA", &url, &model, "LOCAL", true)).await?;
+                    println!("added local destination 'ollama' ({model})");
+                }
+                DestCmd::AddCustom { id, url, model, with_key, allow_failover, ack_external_unverified } => {
+                    if !ack_external_unverified {
+                        bail!("custom endpoints are EXTERNAL_UNVERIFIED (no verified confidentiality); pass --ack-external-unverified");
+                    }
+                    let mut b = base(&id, "OPENAI_COMPATIBLE", &url, &model, "EXTERNAL_UNVERIFIED", allow_failover);
+                    if with_key {
+                        b["api_key"] = json!(read_secret("Endpoint API key (hidden): ")?);
+                    }
+                    api.post("/providers", b).await?;
+                    println!("added external destination '{id}'");
+                }
+                DestCmd::Remove { id } => {
+                    api.delete(&format!("/providers/{id}")).await?;
+                    println!("removed {id}");
+                }
+                DestCmd::Default { id } => {
+                    api.put("/settings", json!({"engine": {"default_destination": id}})).await?;
+                    println!("default destination: {id}");
+                }
+                DestCmd::Test { id } => println!("{}", serde_json::to_string_pretty(&api.post(&format!("/providers/{id}/test"), json!({})).await?)?),
+            }
+        }
         Cmd::Vault { cmd } => match cmd {
             VaultCmd::Rotate => {
                 let api = ensure_running(&paths, port).await?;

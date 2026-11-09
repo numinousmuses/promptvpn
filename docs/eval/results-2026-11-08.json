@@ -1,0 +1,1307 @@
+[
+  {
+    "config": "deterministic",
+    "cases": 223,
+    "per_category": {
+      "ADDRESS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 11,
+          "fn_labels": 0,
+          "tp_findings": 11,
+          "fp_findings": 0
+        }
+      },
+      "API_KEY": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 27,
+          "fn_labels": 0,
+          "tp_findings": 27,
+          "fp_findings": 0
+        }
+      },
+      "AUTH_SECRET": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 7,
+          "fn_labels": 0,
+          "tp_findings": 7,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:accel": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 3,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:finance": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 2,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:mna": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 3,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "DOB": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 8,
+          "fn_labels": 0,
+          "tp_findings": 8,
+          "fp_findings": 0
+        }
+      },
+      "DRIVER_LICENSE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 0
+        }
+      },
+      "EMAIL": {
+        "precision": 0.96875,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 31,
+          "fn_labels": 0,
+          "tp_findings": 31,
+          "fp_findings": 1
+        }
+      },
+      "EXACT_SECRET": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 4,
+          "fn_labels": 0,
+          "tp_findings": 4,
+          "fp_findings": 0
+        }
+      },
+      "FINANCIAL_ACCOUNT": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 5,
+          "fn_labels": 0,
+          "tp_findings": 5,
+          "fp_findings": 0
+        }
+      },
+      "GOVERNMENT_ID": {
+        "precision": 1.0,
+        "recall": 0.9772727272727273,
+        "fnr": 0.022727272727272707,
+        "counts": {
+          "tp_labels": 43,
+          "fn_labels": 1,
+          "tp_findings": 43,
+          "fp_findings": 0
+        }
+      },
+      "HEALTH_INFORMATION": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 9,
+          "fn_labels": 0,
+          "tp_findings": 16,
+          "fp_findings": 0
+        }
+      },
+      "PASSPORT": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 5,
+          "fn_labels": 0,
+          "tp_findings": 5,
+          "fp_findings": 0
+        }
+      },
+      "PAYMENT_CARD": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 10,
+          "fn_labels": 0,
+          "tp_findings": 10,
+          "fp_findings": 0
+        }
+      },
+      "PERSON": {
+        "precision": 1.0,
+        "recall": 0.6923076923076923,
+        "fnr": 0.3076923076923077,
+        "counts": {
+          "tp_labels": 9,
+          "fn_labels": 4,
+          "tp_findings": 9,
+          "fp_findings": 0
+        }
+      },
+      "PHONE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 13,
+          "fn_labels": 0,
+          "tp_findings": 13,
+          "fp_findings": 0
+        }
+      },
+      "PRIVATE_KEY": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 0
+        }
+      }
+    },
+    "critical_labels": 103,
+    "critical_escapes": 1,
+    "critical_escape_rate": 0.009708737864077669,
+    "decision_accuracy": 0.9596412556053812,
+    "false_block_rate": 0.0,
+    "utility_preserved": 0.8844133099824869,
+    "latency_ms_p50": 0.19558299999999998,
+    "latency_ms_p95": 1.7669579999999998,
+    "peak_rss_mb": 30.203125,
+    "semantic_tokens_per_sec": null,
+    "classifier_failures": 0,
+    "mismatches": [
+      {
+        "id": "semantic-accel-0",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-accel-1",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-accel-2",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-3",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-4",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-5",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-finance-6",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-finance-7",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "hard-ssn-words",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "hard"
+        ]
+      }
+    ]
+  },
+  {
+    "config": "gliner",
+    "cases": 223,
+    "per_category": {
+      "ADDRESS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 11,
+          "fn_labels": 0,
+          "tp_findings": 13,
+          "fp_findings": 0
+        }
+      },
+      "API_KEY": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 27,
+          "fn_labels": 0,
+          "tp_findings": 27,
+          "fp_findings": 0
+        }
+      },
+      "AUTH_SECRET": {
+        "precision": 0.7,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 7,
+          "fn_labels": 0,
+          "tp_findings": 7,
+          "fp_findings": 3
+        }
+      },
+      "CONCEPT:accel": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 3,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:finance": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 2,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:mna": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 3,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "DOB": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 8,
+          "fn_labels": 0,
+          "tp_findings": 8,
+          "fp_findings": 0
+        }
+      },
+      "DRIVER_LICENSE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 0
+        }
+      },
+      "EMAIL": {
+        "precision": 0.96875,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 31,
+          "fn_labels": 0,
+          "tp_findings": 31,
+          "fp_findings": 1
+        }
+      },
+      "EXACT_SECRET": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 4,
+          "fn_labels": 0,
+          "tp_findings": 4,
+          "fp_findings": 0
+        }
+      },
+      "FINANCIAL_ACCOUNT": {
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 5,
+          "fn_labels": 0,
+          "tp_findings": 5,
+          "fp_findings": 1
+        }
+      },
+      "GOVERNMENT_ID": {
+        "precision": 1.0,
+        "recall": 0.9772727272727273,
+        "fnr": 0.022727272727272707,
+        "counts": {
+          "tp_labels": 43,
+          "fn_labels": 1,
+          "tp_findings": 43,
+          "fp_findings": 0
+        }
+      },
+      "HEALTH_INFORMATION": {
+        "precision": 0.7727272727272727,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 9,
+          "fn_labels": 0,
+          "tp_findings": 17,
+          "fp_findings": 5
+        }
+      },
+      "PASSPORT": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 5,
+          "fn_labels": 0,
+          "tp_findings": 5,
+          "fp_findings": 0
+        }
+      },
+      "PAYMENT_CARD": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 10,
+          "fn_labels": 0,
+          "tp_findings": 10,
+          "fp_findings": 0
+        }
+      },
+      "PERSON": {
+        "precision": 0.6470588235294118,
+        "recall": 0.8461538461538461,
+        "fnr": 0.15384615384615385,
+        "counts": {
+          "tp_labels": 11,
+          "fn_labels": 2,
+          "tp_findings": 11,
+          "fp_findings": 6
+        }
+      },
+      "PHONE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 13,
+          "fn_labels": 0,
+          "tp_findings": 19,
+          "fp_findings": 0
+        }
+      },
+      "PRIVATE_KEY": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 0
+        }
+      }
+    },
+    "critical_labels": 103,
+    "critical_escapes": 1,
+    "critical_escape_rate": 0.009708737864077669,
+    "decision_accuracy": 0.9596412556053812,
+    "false_block_rate": 0.0,
+    "utility_preserved": 0.8844133099824869,
+    "latency_ms_p50": 9.514375000000001,
+    "latency_ms_p95": 15.432042,
+    "peak_rss_mb": 390.484375,
+    "semantic_tokens_per_sec": null,
+    "classifier_failures": 0,
+    "mismatches": [
+      {
+        "id": "semantic-accel-0",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-accel-1",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-accel-2",
+        "expect": "BLOCK",
+        "got": "TRANSFORM",
+        "categories": [
+          "HEALTH_INFORMATION"
+        ],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-3",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-4",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-5",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-finance-6",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-finance-7",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "hard-ssn-words",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "hard"
+        ]
+      }
+    ]
+  },
+  {
+    "config": "qwen3guard",
+    "cases": 223,
+    "per_category": {
+      "ADDRESS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 11,
+          "fn_labels": 0,
+          "tp_findings": 11,
+          "fp_findings": 0
+        }
+      },
+      "API_KEY": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 27,
+          "fn_labels": 0,
+          "tp_findings": 27,
+          "fp_findings": 0
+        }
+      },
+      "AUTH_SECRET": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 7,
+          "fn_labels": 0,
+          "tp_findings": 7,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:accel": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 3,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:finance": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 2,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:mna": {
+        "precision": null,
+        "recall": 0.0,
+        "fnr": 1.0,
+        "counts": {
+          "tp_labels": 0,
+          "fn_labels": 3,
+          "tp_findings": 0,
+          "fp_findings": 0
+        }
+      },
+      "DOB": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 8,
+          "fn_labels": 0,
+          "tp_findings": 8,
+          "fp_findings": 0
+        }
+      },
+      "DRIVER_LICENSE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 0
+        }
+      },
+      "EMAIL": {
+        "precision": 0.96875,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 31,
+          "fn_labels": 0,
+          "tp_findings": 31,
+          "fp_findings": 1
+        }
+      },
+      "EXACT_SECRET": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 4,
+          "fn_labels": 0,
+          "tp_findings": 4,
+          "fp_findings": 0
+        }
+      },
+      "FINANCIAL_ACCOUNT": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 5,
+          "fn_labels": 0,
+          "tp_findings": 5,
+          "fp_findings": 0
+        }
+      },
+      "GOVERNMENT_ID": {
+        "precision": 1.0,
+        "recall": 0.9772727272727273,
+        "fnr": 0.022727272727272707,
+        "counts": {
+          "tp_labels": 43,
+          "fn_labels": 1,
+          "tp_findings": 43,
+          "fp_findings": 0
+        }
+      },
+      "HEALTH_INFORMATION": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 9,
+          "fn_labels": 0,
+          "tp_findings": 16,
+          "fp_findings": 0
+        }
+      },
+      "PASSPORT": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 5,
+          "fn_labels": 0,
+          "tp_findings": 5,
+          "fp_findings": 0
+        }
+      },
+      "PAYMENT_CARD": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 10,
+          "fn_labels": 0,
+          "tp_findings": 10,
+          "fp_findings": 0
+        }
+      },
+      "PERSON": {
+        "precision": 1.0,
+        "recall": 0.6923076923076923,
+        "fnr": 0.3076923076923077,
+        "counts": {
+          "tp_labels": 9,
+          "fn_labels": 4,
+          "tp_findings": 9,
+          "fp_findings": 0
+        }
+      },
+      "PHONE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 13,
+          "fn_labels": 0,
+          "tp_findings": 13,
+          "fp_findings": 0
+        }
+      },
+      "PRIVATE_KEY": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 0
+        }
+      }
+    },
+    "critical_labels": 103,
+    "critical_escapes": 0,
+    "critical_escape_rate": 0.0,
+    "decision_accuracy": 0.9551569506726457,
+    "false_block_rate": 0.008928571428571428,
+    "utility_preserved": 0.8844133099824869,
+    "latency_ms_p50": 79.136291,
+    "latency_ms_p95": 113.092292,
+    "peak_rss_mb": 393.0625,
+    "semantic_tokens_per_sec": 179.02450124024264,
+    "classifier_failures": 0,
+    "mismatches": [
+      {
+        "id": "semantic-accel-0",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-accel-1",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-accel-2",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-3",
+        "expect": "BLOCK",
+        "got": "REVIEW",
+        "categories": [
+          "UNCERTAIN"
+        ],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-4",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-mna-5",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-finance-6",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "semantic-finance-7",
+        "expect": "BLOCK",
+        "got": "ALLOW",
+        "categories": [],
+        "tags": [
+          "semantic-only"
+        ]
+      },
+      {
+        "id": "hard-ssn-words",
+        "expect": "BLOCK",
+        "got": "REVIEW",
+        "categories": [
+          "UNCERTAIN"
+        ],
+        "tags": [
+          "hard"
+        ]
+      },
+      {
+        "id": "hard-name-lowercase",
+        "expect": "ALLOW",
+        "got": "REVIEW",
+        "categories": [
+          "UNCERTAIN"
+        ],
+        "tags": [
+          "hard"
+        ]
+      }
+    ]
+  },
+  {
+    "config": "lfm3",
+    "cases": 223,
+    "per_category": {
+      "ADDRESS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 11,
+          "fn_labels": 0,
+          "tp_findings": 11,
+          "fp_findings": 0
+        }
+      },
+      "API_KEY": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 27,
+          "fn_labels": 0,
+          "tp_findings": 27,
+          "fp_findings": 0
+        }
+      },
+      "AUTH_SECRET": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 7,
+          "fn_labels": 0,
+          "tp_findings": 7,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:accel": {
+        "precision": 0.75,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 1
+        }
+      },
+      "CONCEPT:finance": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 2,
+          "fn_labels": 0,
+          "tp_findings": 2,
+          "fp_findings": 0
+        }
+      },
+      "CONCEPT:mna": {
+        "precision": 0.16666666666666666,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 15
+        }
+      },
+      "DOB": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 8,
+          "fn_labels": 0,
+          "tp_findings": 8,
+          "fp_findings": 0
+        }
+      },
+      "DRIVER_LICENSE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 0
+        }
+      },
+      "EMAIL": {
+        "precision": 0.96875,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 31,
+          "fn_labels": 0,
+          "tp_findings": 31,
+          "fp_findings": 1
+        }
+      },
+      "EXACT_SECRET": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 4,
+          "fn_labels": 0,
+          "tp_findings": 4,
+          "fp_findings": 0
+        }
+      },
+      "FINANCIAL_ACCOUNT": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 5,
+          "fn_labels": 0,
+          "tp_findings": 5,
+          "fp_findings": 0
+        }
+      },
+      "GOVERNMENT_ID": {
+        "precision": 1.0,
+        "recall": 0.9772727272727273,
+        "fnr": 0.022727272727272707,
+        "counts": {
+          "tp_labels": 43,
+          "fn_labels": 1,
+          "tp_findings": 43,
+          "fp_findings": 0
+        }
+      },
+      "HEALTH_INFORMATION": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 9,
+          "fn_labels": 0,
+          "tp_findings": 16,
+          "fp_findings": 0
+        }
+      },
+      "PASSPORT": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 5,
+          "fn_labels": 0,
+          "tp_findings": 5,
+          "fp_findings": 0
+        }
+      },
+      "PAYMENT_CARD": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 10,
+          "fn_labels": 0,
+          "tp_findings": 10,
+          "fp_findings": 0
+        }
+      },
+      "PERSON": {
+        "precision": 1.0,
+        "recall": 0.6923076923076923,
+        "fnr": 0.3076923076923077,
+        "counts": {
+          "tp_labels": 9,
+          "fn_labels": 4,
+          "tp_findings": 9,
+          "fp_findings": 0
+        }
+      },
+      "PHONE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 13,
+          "fn_labels": 0,
+          "tp_findings": 13,
+          "fp_findings": 0
+        }
+      },
+      "PRIVATE_KEY": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "fnr": 0.0,
+        "counts": {
+          "tp_labels": 3,
+          "fn_labels": 0,
+          "tp_findings": 3,
+          "fp_findings": 0
+        }
+      }
+    },
+    "critical_labels": 103,
+    "critical_escapes": 0,
+    "critical_escape_rate": 0.0,
+    "decision_accuracy": 0.9327354260089686,
+    "false_block_rate": 0.125,
+    "utility_preserved": 0.8565217391304348,
+    "latency_ms_p50": 853.6042080000001,
+    "latency_ms_p95": 3155.153084,
+    "peak_rss_mb": 393.25,
+    "semantic_tokens_per_sec": 80.97438164313249,
+    "classifier_failures": 0,
+    "mismatches": [
+      {
+        "id": "email-1",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-2",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-3",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-4",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-6",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-8",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-11",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-12",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-13",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-15",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-20",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "email-23",
+        "expect": "TRANSFORM",
+        "got": "BLOCK",
+        "categories": [
+          "CONCEPT:mna",
+          "EMAIL"
+        ],
+        "tags": [
+          "email"
+        ]
+      },
+      {
+        "id": "negative-12",
+        "expect": "ALLOW",
+        "got": "REVIEW",
+        "categories": [
+          "UNCERTAIN"
+        ],
+        "tags": [
+          "hard-negative"
+        ]
+      },
+      {
+        "id": "hard-ssn-words",
+        "expect": "BLOCK",
+        "got": "REVIEW",
+        "categories": [
+          "UNCERTAIN"
+        ],
+        "tags": [
+          "hard"
+        ]
+      },
+      {
+        "id": "hard-name-lowercase",
+        "expect": "ALLOW",
+        "got": "REVIEW",
+        "categories": [
+          "UNCERTAIN"
+        ],
+        "tags": [
+          "hard"
+        ]
+      }
+    ]
+  }
+]

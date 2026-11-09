@@ -599,7 +599,7 @@ async fn providers(State(st): St) -> R {
             json!({"config": p, "has_credential": has_cred})
         })
         .collect();
-    Ok(Json(json!({"providers": list, "verifications": st.engine.registry.cached_verifications()})))
+    Ok(Json(json!({"providers": list, "verifications": st.engine.registry.cached_verifications(), "attestations": st.db().attestations()?})))
 }
 
 #[derive(Deserialize)]
@@ -1092,8 +1092,18 @@ pub async fn complete_onboarding_inner(st: &AppState, p: OnboardingPayload) -> R
         s.private_destination = Some("near".into());
         s.private_model = p.near.model.clone();
     }
-    s.default_destination = p.default_destination.clone().or_else(|| providers_made.first().map(|x| x.to_string()));
-    s.failover = ["near", "ollama", "custom"].iter().filter(|x| providers_made.contains(x) && Some(x.to_string()) != s.default_destination).map(|x| x.to_string()).collect();
+    // Re-running onboarding keeps unrelated configuration: the existing default
+    // and failover entries survive unless replaced.
+    s.default_destination = p.default_destination.clone().or_else(|| providers_made.first().map(|x| x.to_string())).or(s.default_destination.clone());
+    let mut fo: Vec<String> = s.failover.clone();
+    for x in ["near", "ollama", "custom"] {
+        if providers_made.contains(&x) && !fo.iter().any(|f| f == x) {
+            fo.push(x.to_string());
+        }
+    }
+    let known: Vec<String> = st.engine.registry.providers().into_iter().map(|p| p.id).collect();
+    fo.retain(|f| Some(f.clone()) != s.default_destination && known.contains(f));
+    s.failover = fo;
     state::save_settings(st, &s, "onboarding")?;
     st.db().record_consent("tee_private_route", s.fallback.tee_consent, &json!({"mode": format!("{:?}", s.fallback.mode)}), Some(&st.engine.policy_hash()))?;
     // 4. Classifier.

@@ -90,7 +90,9 @@ export function eventTitle(e: AuditEvent): string {
         return `${noun} failed`;
     }
   }
-  return titleCase(e.kind) + ': ' + titleCase(e.action);
+  // Owner/admin events: "Policy edit", "Tee verified", ...
+  const t = e.action.toLowerCase().replace(/_/g, ' ');
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 export function categoryLabel(c: string): string {

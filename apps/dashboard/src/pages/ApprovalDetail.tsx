@@ -367,6 +367,7 @@ function SaveRuleDialog({ categories, onClose, onSaved }: { categories: string[]
         title={`Relax a critical protection?`}
         phrase={`DISABLE ${typed.cat}`}
         confirmLabel="Relax protection"
+        cancelLabel="Keep protection on"
         onClose={() => setTyped(null)}
         onConfirm={async (phrase) => {
           await put('/categories/' + encodeURIComponent(typed.cat), { action: typed.action, confirm: phrase });

@@ -135,7 +135,7 @@ export function AttestationDetails({ v }: { v: NearVerification }) {
 
 export default function ModelsPage() {
   const models = useLoad(() => get<ModelsStatus>('/models'), []);
-  const providers = useLoad(() => get<{ providers: ProviderEntry[]; verifications: NearVerification[] }>('/providers'), []);
+  const providers = useLoad(() => get<{ providers: ProviderEntry[]; verifications: NearVerification[]; attestations?: NearVerification[] }>('/providers'), []);
   const settings = useLoad(() => get<SettingsResponse>('/settings'), []);
 
   return (
@@ -146,7 +146,7 @@ export default function ModelsPage() {
         <SpanCard m={models} />
       </div>
       <DestinationsCard providers={providers} settings={settings.data} />
-      <NearCard verifications={providers.data?.verifications ?? []} onChanged={() => providers.reload()} hasNear={!!providers.data?.providers.some((p) => p.config.kind === 'NEAR_AI')} />
+      <NearCard verifications={[...(providers.data?.attestations ?? []), ...(providers.data?.verifications ?? [])]} onChanged={() => providers.reload()} hasNear={!!providers.data?.providers.some((p) => p.config.kind === 'NEAR_AI')} />
       <div className="grid-2">
         <OllamaGenCard m={models.data} onSaved={() => providers.reload()} />
         <CustomEndpointCard onSaved={() => providers.reload()} />

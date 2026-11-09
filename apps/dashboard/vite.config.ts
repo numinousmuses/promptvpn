@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // The daemon embeds dist/ and serves it at /dashboard/. In development the Vite
@@ -8,16 +8,20 @@ import react from '@vitejs/plugin-react';
 const daemon = process.env.PV_DAEMON_URL ?? 'http://127.0.0.1:8787';
 const daemonHost = new URL(daemon).host;
 
-const toDaemon = {
+const toDaemon: ProxyOptions = {
   target: daemon,
   changeOrigin: true,
-  configure(proxy: { on: (ev: 'proxyReq', fn: (req: { setHeader(k: string, v: string): void }) => void) => void }) {
+  configure(proxy) {
     proxy.on('proxyReq', (req) => {
       req.setHeader('host', daemonHost);
       req.setHeader('origin', daemon);
     });
   },
 };
+
+// Same policy the daemon sends with the embedded build; `npm run preview`
+// applies it so CSP violations show up before the Rust binary is rebuilt.
+const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 
 export default defineConfig({
   base: '/dashboard/',
@@ -31,6 +35,15 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/api': toDaemon,
+      '/dashboard/login': toDaemon,
+    },
+  },
+  preview: {
+    port: 4180,
+    strictPort: true,
+    headers: { 'Content-Security-Policy': CSP },
     proxy: {
       '/api': toDaemon,
       '/dashboard/login': toDaemon,
