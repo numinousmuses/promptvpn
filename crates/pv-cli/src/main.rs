@@ -884,9 +884,10 @@ pub fn home() -> std::path::PathBuf {
 async fn near(paths: &Paths, port: u16, j: bool, cmd: NearCmd) -> Result<()> {
     match cmd {
         NearCmd::Models => {
-            let api = Api::new(paths, port)?;
-            let v = if api.healthy().await {
-                api.get("/near/models").await?
+            let api = Api::new(paths, port).ok();
+            let up = match &api { Some(a) => a.healthy().await, None => false };
+            let v = if up {
+                api.unwrap().get("/near/models").await?
             } else {
                 use pv_provider_shim::list;
                 list().await?
@@ -902,9 +903,10 @@ async fn near(paths: &Paths, port: u16, j: bool, cmd: NearCmd) -> Result<()> {
         }
         NearCmd::VerifyAttestation { model } => {
             let model = model.unwrap_or_else(|| pv_provider::near::DEFAULT_NEAR_MODEL.into());
-            let api = Api::new(paths, port)?;
-            let v = if api.healthy().await {
-                api.post("/near/verify", json!({"model": model})).await?
+            let api = Api::new(paths, port).ok();
+            let up = match &api { Some(a) => a.healthy().await, None => false };
+            let v = if up {
+                api.unwrap().post("/near/verify", json!({"model": model})).await?
             } else {
                 pv_provider_shim::verify(&model).await?
             };
