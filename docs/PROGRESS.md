@@ -1,71 +1,70 @@
 # Prompt VPN build progress
 
 Tracks every requirement in `docs/spec-v1.4.md` against what is built and tested.
-Status keys: `[ ]` not started, `[~]` partial, `[x]` done and tested, `[!]` blocked (see notes).
+Status keys: `[x]` done and tested, `[~]` done with a stated gap, `[!]` blocked on Joshua.
 
 ## Phase 0: contracts and threat model
-- [x] Typed schemas (Policy, Finding, Decision, TransformMap, AuditEvent, PendingApproval, ProviderConfig, ClientIntegration) with version fields
-- [~] JSON Schema export + TypeScript generation + OpenAPI
-- [ ] Threat model + trust-boundary diagram (`docs/threat-model.md`)
-- [ ] Policy semantics doc
-- [x] Executable architecture tests: precedence, audit privacy, block behavior
+- [x] Typed, versioned schemas (Policy, Finding, Decision, TransformMap, AuditEvent, PendingApproval, ProviderConfig, ClientIntegration) in `pv-core`
+- [x] JSON Schema export (`promptvpn schema`, `schemas/`), TypeScript generation (`apps/dashboard npm run gen:types`), CI checks both are current
+- [~] OpenAPI: not generated; the admin API is described in the dashboard's typed client and the schemas. Low value for a local-only API
+- [x] Threat model + trust boundaries (`docs/threat-model.md`), policy semantics (`docs/policy-semantics.md`)
+- [x] Executable architecture tests: precedence, audit privacy, block behavior (`pv-core/tests/policy.rs`, `pv-daemon/tests/gates.rs`)
+- [x] Migration tests (`pv-audit/tests/store.rs`: idempotent apply, newer schema refused)
 
 ## Phase 1: daemon, CLI, proxy, vault, dashboard shell
-- [x] Axum daemon bound to 127.0.0.1 only, port-conflict strategy
-- [x] Admin auth (install token), session login, CSRF/Origin/Host checks, no CORS
-- [x] AEAD vault (XChaCha20-Poly1305), key IDs, OS keychain DEK, rotation, recovery export
-- [x] SQLite with migrations + migration tests
-- [x] Audit events: hash-chain + MAC, 30-day retention, export, delete, verify
-- [x] Mock upstream recording exact bytes
-- [ ] Gate: SSN never reaches mock upstream; tokenized email restored; events omit values
+- [x] Daemon bound to 127.0.0.1 only; port conflict fails loudly, never binds elsewhere
+- [x] Admin auth (install token), single-use login ticket → HttpOnly SameSite=Strict cookie, CSRF header, Origin/Sec-Fetch-Site/Host checks, no CORS, strict CSP
+- [x] AEAD vault (XChaCha20-Poly1305, AAD per row), key IDs, OS keychain key set, rotation, Argon2id recovery bundle, fail-closed lock
+- [x] Audit events: metadata only, HMAC chain, retention with anchors, export, delete, verify
+- [x] Mock upstream recording exact bytes and auth headers
+- [x] **Gate:** SSN never reaches mock upstream; tokenized email restored; events and disk omit values
 
 ## Phase 2: classifiers, Ollama, policy editor
-- [x] Built-in recognizers for all 15 concepts (checksums, context cues)
-- [x] Encoded data (base64, URL, JSON escapes) and Unicode confusables
-- [x] Exact-value matcher with policy-selected normalizations, keyed fingerprints
-- [~] Semantic concepts via Ollama classifier (Qwen3Guard / LFM), one active
-- [~] GLiNER PII Edge embedded span adapter
-- [x] Overlap merge preserving secret findings
-- [~] Ollama detect / install prompt / auto-pull with progress + identity check
-- [~] models.lock.json
-- [ ] Eval corpus + benchmark harness with required metrics
-- [ ] Gate: reproducible metrics; model failure triggers fallback without leakage
+- [x] 15 built-in concepts with checksums and context cues; encoded (base64, %XX, \u, \x) and Unicode-confusable views
+- [x] Exact values, patterns, file fingerprints; keyed fingerprints; allowlist
+- [x] GLiNER PII Edge embedded (vendored gline-rs with ModernBERT fixes), pinned + hash-verified provisioning, plausibility filter
+- [x] Qwen3Guard and LFM3 adapters; one active; identity verified against models.lock.json; Ollama detection and install guidance (never installs)
+- [x] Overlap merge keeps secret findings; whole-field judgements never partially transformed
+- [x] models.lock.json
+- [x] Eval corpus (223 synthetic labeled cases) + `promptvpn eval` with per-category P/R/FNR, critical escape rate, false-block rate, utility, latency p50/p95, RSS, tokens/s
+- [x] **Gate:** reproducible metrics for all four configs (`docs/evaluation.md`); classifier failure → fallback, never allow (tested)
 
 ## Phase 3: approvals, streaming, integrations
-- [~] REQUIRE_APPROVAL / BLOCK_AND_REVIEW: immediate PV_APPROVAL_REQUIRED, encrypted 15-min pending
-- [~] Approve once, deny, edit-and-retry, whitelist, blacklist, save-as-rule, guidance notes
-- [~] Owner-only reveal of pending plaintext
-- [~] Desktop notifications (macOS/Linux) with rate limit, no plaintext
-- [x] Chat Completions: non-stream, stream, tools
-- [x] Responses API: non-stream, stream, tools
-- [x] Output inspection + bounded streaming safety buffer + restoration
-- [ ] Client integrations with backup/rollback
-- [ ] Gate: no bypass via streaming, retries, edits, approval reuse
+- [x] REQUIRE_APPROVAL / BLOCK_AND_REVIEW → immediate 428 `PV_APPROVAL_REQUIRED`, encrypted 15-min payload, crash-safe expiry
+- [x] Approve once, deny, cancel, edit-and-retry (reclassified), whitelist, blacklist, save-as-rule (exact/category/concept/guidance)
+- [x] Owner-only reveal with confirmation, audited
+- [~] Desktop notifications: macOS osascript (verified), Linux notify-send (untested until CI), rate limited, no values
+- [x] Chat Completions and Responses: non-stream, SSE, tools; Responses↔Chat translation
+- [x] Output inspection, 256-byte streaming hold-back, scoped restoration
+- [x] Client integrations (codex, aider, opencode, env) with backup, idempotent re-run, rollback
+- [x] **Gate:** no bypass via streaming, retries, edits, approval reuse (`approvals.rs`, `routing.rs`, `adversarial.rs`)
 
 ## Phase 4: setup skill and packaging
-- [ ] `skills/promptvpn-setup/SKILL.md` + scripts + tests + adapters
-- [ ] Release packaging for macOS arm64/x86_64, Linux x86_64/arm64, checksums + signatures
-- [ ] Daemon autostart (launchd / systemd user) with consent
-- [ ] Uninstall preserving data by default
-- [ ] Gate: clean-environment skill demo end-to-end
+- [x] `skills/promptvpn-setup/SKILL.md`, scripts (discover, verified install, egress test, rollback), 10 script tests, generated adapters
+- [x] Packaging script with signed SHA256SUMS; macOS arm64 native + x86_64 cross build verified (x86 binary passes `connect test` under Rosetta)
+- [~] Linux x86_64/arm64: CI matrix written, not run (no Linux host or Docker locally; runs on push)
+- [x] Daemon autostart (launchd / systemd user) only with confirmation
+- [x] Uninstall keeps data by default; `--purge` needs typed DELETE
+- [~] **Gate:** skill flow exercised end to end on this Mac in a fresh PV_HOME (init, real models, egress test, client configure/rollback). A clean VM run is still to do
 
 ## Phase 5: NEAR AI Gateway
-- [~] Model discovery, auth, OpenAI-compatible invocation
-- [~] Attestation verification bound to model + nonce
-- [~] Completion signature verification
-- [~] PRIVATE_ROUTE only to verified eligible endpoints; no downgrade
-- [ ] Gate: real NEAR inference + verification
+- [x] Model discovery with privacy tiers; alias detection; `x-no-aliasing`
+- [x] Attestation via official `nearai-inference-sdk` 0.3.0: gateway TDX + TLS SPKI binding, model TDX, NRAS GPU evidence required; live test passes
+- [x] PRIVATE_ROUTE only to verified eligible models; E2EE to attested key; no downgrade (tested with mock backend)
+- [!] **Gate:** real NEAR inference + response-signature verification needs a NEAR API key (`promptvpn near login` then `promptvpn near test`)
+- [!] Spec's preferred `deepseek-ai/DeepSeek-V4-Flash` is an alias of `z-ai/glm-5.3-flash`; Joshua to confirm `deepseek-ai/DeepSeek-V4.1-Flash-1017` as the default
 
 ## Dashboard
-- [ ] Onboarding wizard (6 steps, consent never pre-checked)
-- [ ] Overview, Activity, Event detail, Policies + playground, Categories, Secrets, Concepts, Apps, Models/Destinations, Approvals, Settings, Health
+- [x] Onboarding wizard (6 steps, consent unchecked by default, Skip for now, critical toggles with typed confirmation)
+- [x] Overview, Activity, Event detail, Approvals/Review, Policies + playground, Categories, Secrets, Concepts, Apps, Models & destinations, Settings, Health
+- [x] Headless check of every page and wizard step against the production daemon: no console errors
 
 ## Docs
-- [ ] README with limitations and coverage boundary
-- [ ] docs/deviations.md
+- [x] README (coverage boundary and limits), threat model, policy semantics, operations, evaluation, deviations
 
 ## Log
-- 2026-11-08: pv-core, detectors, audit, vault, transform, provider, proxy, daemon built; 120+ unit tests; 13 HTTP gate tests green.
-- 2026-11-08: NEAR live check: DeepSeek-V4.1-Flash-1017 verifies (gateway TLS-bound + model TDX + NRAS GPU); spec's DeepSeek-V4-Flash is an alias of z-ai/glm-5.3-flash and is rejected. No NEAR API key on this machine, so live inference is blocked on Joshua.
-- 2026-11-08: gline-rs vendored with two ModernBERT fixes; GLiNER edge finds name/email/phone/SSN/health in ~20 ms.
-- 2026-11-08: Qwen3Guard (hf.co/mradermacher Q8_0) verified by weight sha256; lfm3:1.7b on macOS resolves to MLX nvfp4, pinned by platform manifest digest.
+- 2026-11-08: core crates, daemon, CLI built; ~200 tests green (unit, HTTP integration, approvals, routing, adversarial, skill scripts).
+- 2026-11-08: NEAR live: DeepSeek-V4.1-Flash-1017 verifies; DeepSeek-V4-Flash rejected as alias. No API key here.
+- 2026-11-08: gline-rs fixes (ModernBERT token IDs, logits layout); GLiNER plausibility filter after real false positives.
+- 2026-11-08: LFM3 on Apple Silicon runs on Ollama's MLX runner without schema enforcement; bounded recovery parser.
+- 2026-11-08: Real end-to-end: fresh PV_HOME, init, LFM3 + GLiNER active, concept prompt blocked, public spec allowed, email tokenized and restored.
